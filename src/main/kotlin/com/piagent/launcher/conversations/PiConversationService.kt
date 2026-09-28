@@ -141,7 +141,14 @@ class PiConversationService(private val project: Project) {
 
     fun appendToDraft(text: String, block: Boolean = false) {
         val conversation = ensureActiveConversation()
-        conversation.draft = mergeDraft(conversation.draft, text, block)
+        conversation.draft = upsertFileRefs(conversation.draft, text) ?: mergeDraft(conversation.draft, text, block)
+        showToolWindow(focus = true)
+        notifyListeners(ChangeEvent(ChangeKind.DRAFT_APPENDED, conversation.id))
+    }
+
+    fun appendWorkspaceFiles(paths: List<String>) {
+        val conversation = ensureActiveConversation()
+        conversation.draft = replaceWorkspaceBlock(conversation.draft, formatWorkspaceBlock(paths))
         showToolWindow(focus = true)
         notifyListeners(ChangeEvent(ChangeKind.DRAFT_APPENDED, conversation.id))
     }
@@ -154,6 +161,51 @@ class PiConversationService(private val project: Project) {
             draft + text
         } else {
             draft + " " + text
+        }
+    }
+
+    /**
+     * Later @file / @file#L refs replace earlier ones for the same path.
+     * The workspace-open-files block is left intact.
+     * Returns null when [incoming] has no file references.
+     */
+    private fun upsertFileRefs(draft: String, incoming: String): String? {
+        val matches = FILE_REF_REGEX.findAll(incoming).toList()
+        if (matches.isEmpty()) return null
+
+        val latestByPath = LinkedHashMap<String, String>()
+        for (match in matches) {
+            latestByPath[match.groupValues[1]] = match.value
+        }
+
+        val workspace = WORKSPACE_BLOCK_REGEX.find(draft)?.value
+        var result = WORKSPACE_BLOCK_REGEX.replace(draft, "")
+        for (path in latestByPath.keys) {
+            result = result.replace(Regex("""@${Regex.escape(path)}(?:#L\d+(?:-\d+)?)?"""), "")
+        }
+        result = result
+            .replace(Regex("[ \\t]+\\n"), "\n")
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .replace(Regex(" {2,}"), " ")
+            .trim()
+
+        val block = latestByPath.values.joinToString("\n")
+        val merged = if (result.isEmpty()) block else result + "\n" + block
+        return if (workspace.isNullOrBlank()) merged else "$merged\n\n$workspace"
+    }
+
+    private fun replaceWorkspaceBlock(draft: String, newBlock: String): String {
+        val without = WORKSPACE_BLOCK_REGEX.replace(draft, "").trim()
+        return if (without.isEmpty()) newBlock else "$without\n\n$newBlock"
+    }
+
+    private fun formatWorkspaceBlock(paths: List<String>): String {
+        return buildString {
+            appendLine(WORKSPACE_START)
+            appendLine("The user currently has these files open in their IDE workspace.")
+            appendLine("They may be contextually related to the current question. Read them on demand if needed.")
+            paths.forEach { appendLine(it) }
+            append(WORKSPACE_END)
         }
     }
 
@@ -245,7 +297,13 @@ class PiConversationService(private val project: Project) {
 
     companion object {
         const val TOOL_WINDOW_ID = "Pi Agent"
+        const val WORKSPACE_START = "<workspace-open-files>"
+        const val WORKSPACE_END = "</workspace-open-files>"
         private val TITLE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
+        private val FILE_REF_REGEX = Regex("""@([^\s#]+)(?:#L\d+(?:-\d+)?)?""")
+        private val WORKSPACE_BLOCK_REGEX = Regex(
+            """$WORKSPACE_START[\s\S]*?$WORKSPACE_END"""
+        )
 
         fun getInstance(project: Project): PiConversationService = project.service()
     }

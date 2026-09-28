@@ -313,11 +313,7 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             Messages.showInfoMessage(project, "No open workspace files.", "Pi Agent")
             return
         }
-        val block = buildString {
-            append("当前用户的workplace打开的文件:")
-            paths.forEach { append('\n').append(it) }
-        }
-        conversations.appendToDraft(block, block = true)
+        conversations.appendWorkspaceFiles(paths)
     }
 
     override fun dispose() {

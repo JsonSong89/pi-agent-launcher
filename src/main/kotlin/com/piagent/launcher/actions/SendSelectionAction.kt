@@ -22,17 +22,6 @@ class SendSelectionAction : AnAction(), DumbAware {
             ?: e.getData(CommonDataKeys.PSI_FILE)?.virtualFile
             ?: return
 
-        val startLine: Int
-        val endLine: Int
-
-        if (selectionModel.hasSelection()) {
-            startLine = editor.document.getLineNumber(selectionModel.selectionStart) + 1
-            endLine = editor.document.getLineNumber(selectionModel.selectionEnd) + 1
-        } else {
-            startLine = 1
-            endLine = editor.document.lineCount
-        }
-
         val projectPath = project.basePath ?: ""
         val filePath = virtualFile.path
         val relativePath = if (filePath.startsWith(projectPath)) {
@@ -41,10 +30,16 @@ class SendSelectionAction : AnAction(), DumbAware {
             filePath
         }
 
-        val reference = if (startLine == endLine) {
-            "@$relativePath#L$startLine "
+        val reference = if (!selectionModel.hasSelection()) {
+            "@$relativePath"
         } else {
-            "@$relativePath#L$startLine-$endLine "
+            val startLine = editor.document.getLineNumber(selectionModel.selectionStart) + 1
+            val endLine = editor.document.getLineNumber(selectionModel.selectionEnd) + 1
+            if (startLine == endLine) {
+                "@$relativePath#L$startLine"
+            } else {
+                "@$relativePath#L$startLine-$endLine"
+            }
         }
 
         val diffWatcher = PiDiffWatcher.getInstance(project)

@@ -77,14 +77,17 @@ class PiFileWatcher(private val project: Project) : Disposable {
                 object : BulkFileListener {
                     override fun after(events: List<VFileEvent>) {
                         if (!isWatching) return
+                        val settings = PiSettings.getInstance().state
+                        if (!settings.autoOpenFiles && !settings.showNotifications) return
                         val projectPath = project.basePath ?: return
-                        val autoOpen = PiSettings.getInstance().state.autoOpenFiles
                         for (event in events) {
                             if (event !is VFileContentChangeEvent) continue
                             val path = event.file.path
                             if (!path.startsWith(projectPath)) continue
-                            modifiedFiles.add(path)
-                            if (autoOpen) {
+                            if (settings.showNotifications) {
+                                modifiedFiles.add(path)
+                            }
+                            if (settings.autoOpenFiles) {
                                 enqueueOpen(path)
                             }
                         }

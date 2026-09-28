@@ -1,5 +1,6 @@
 package com.piagent.launcher.actions
 
+import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -45,8 +46,15 @@ class SendFileToPiAction : AnAction(), DumbAware {
     }
 
     override fun update(e: AnActionEvent) {
+        // Shared shortcut with SendSelection: disable this action for editor
+        // keystrokes, but keep it on Project View / Editor Tab popups.
+        val fromFilePopup = e.place == ActionPlaces.PROJECT_VIEW_POPUP ||
+            e.place == ActionPlaces.EDITOR_TAB_POPUP
+        val editorHasFocus = e.getData(CommonDataKeys.EDITOR) != null
         e.presentation.isVisible = true
-        e.presentation.isEnabled = e.project != null && getFiles(e).isNotEmpty()
+        e.presentation.isEnabled = e.project != null &&
+            getFiles(e).isNotEmpty() &&
+            (fromFilePopup || !editorHasFocus)
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT

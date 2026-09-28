@@ -57,7 +57,9 @@ class SendFileToPiAction : AnAction(), DumbAware {
         e.getData(CommonDataKeys.VIRTUAL_FILE)?.let { found.add(it) }
         e.getData(PlatformDataKeys.VIRTUAL_FILE_ARRAY)?.forEach { found.add(it) }
 
-        e.getData(LangDataKeys.IDE_VIEW)?.selectedFiles?.forEach { found.add(it) }
+        e.getData(LangDataKeys.IDE_VIEW)?.directories?.forEach { dir ->
+            dir.virtualFile?.let { found.add(it) }
+        }
 
         e.getData(LangDataKeys.PSI_ELEMENT_ARRAY)?.forEach { addPsiFile(found, it) }
         e.getData(CommonDataKeys.PSI_ELEMENT)?.let { addPsiFile(found, it) }

@@ -8,11 +8,56 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# Pushing a commit to main and then tagging it fires two events.
+# Same SHA shares one slot; the tag run cancels the branch run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
 jobs:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.decide.outputs.should_build }}
+    steps:
+      - id: decide
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isMainPush = context.eventName === 'push' && context.ref === 'refs/heads/main'
+            if (!isMainPush) {
+              core.setOutput('should_build', 'true')
+              return
+            }
+            const refs = await github.paginate(github.rest.git.listMatchingRefs, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: 'tags/v',
+            })
+            for (const r of refs) {
+              let sha = r.object.sha
+              if (r.object.type === 'tag') {
+                const tag = await github.rest.git.getTag({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  tag_sha: sha,
+                })
+                sha = tag.data.object.sha
+              }
+              if (sha === context.sha) {
+                core.info(`Skip branch build; ${r.ref} already points at this commit`)
+                core.setOutput('should_build', 'false')
+                return
+              }
+            }
+            core.setOutput('should_build', 'true')
+
   build:
+    needs: decide
+    if: needs.decide.outputs.should_build == 'true'
     runs-on: ubuntu-latest
 
     steps:

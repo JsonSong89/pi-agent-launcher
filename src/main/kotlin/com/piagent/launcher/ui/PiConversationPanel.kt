@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.CustomShortcutSet
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.ide.CopyPasteManager
@@ -32,9 +33,12 @@ import java.awt.FlowLayout
 import java.awt.Font
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.awt.event.InputEvent
+import java.awt.event.KeyEvent
 import javax.swing.DefaultComboBoxModel
 import javax.swing.DefaultListCellRenderer
 import javax.swing.JButton
+import javax.swing.JComponent
 import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.KeyStroke
@@ -54,9 +58,6 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
     private val historyArea = JBTextArea()
     private val inputArea = JBTextArea()
     private val sendButton = JButton("Send")
-    private val appendButton = JButton("Append").apply {
-        toolTipText = "Insert into the Pi terminal without sending"
-    }
     private val copyInputButton = JButton(AllIcons.Actions.Copy).apply {
         toolTipText = "Copy input to clipboard"
     }
@@ -156,9 +157,17 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
                 override fun removeUpdate(e: DocumentEvent) = persistDraft()
                 override fun changedUpdate(e: DocumentEvent) = persistDraft()
             })
-            inputMap.put(KeyStroke.getKeyStroke("ENTER"), "pi-enter")
-            inputMap.put(KeyStroke.getKeyStroke("ctrl ENTER"), "pi-ctrl-enter")
-            inputMap.put(KeyStroke.getKeyStroke("shift ENTER"), "insert-break")
+            val enter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0)
+            val ctrlEnter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.CTRL_DOWN_MASK)
+            val shiftEnter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.SHIFT_DOWN_MASK)
+            for (map in listOf(
+                getInputMap(JComponent.WHEN_FOCUSED),
+                getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+            )) {
+                map.put(enter, "pi-enter")
+                map.put(ctrlEnter, "pi-ctrl-enter")
+                map.put(shiftEnter, "insert-break")
+            }
             actionMap.put("pi-enter", object : javax.swing.AbstractAction() {
                 override fun actionPerformed(e: java.awt.event.ActionEvent) {
                     if (PiSettings.getInstance().state.sendWithCtrlEnter) {
@@ -174,9 +183,19 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
                 }
             })
         }
+        // IdeEventQueue handles keymap actions before Swing InputMap; bind
+        // Ctrl+Enter on this component so the IDE does not swallow it.
+        object : DumbAwareAction() {
+            override fun actionPerformed(e: AnActionEvent) {
+                sendDraft()
+            }
+        }.registerCustomShortcutSet(
+            CustomShortcutSet(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.CTRL_DOWN_MASK)),
+            inputArea,
+            this
+        )
 
         sendButton.addActionListener { sendDraft() }
-        appendButton.addActionListener { appendDraft() }
         copyInputButton.addActionListener { copyInputToClipboard() }
         copyWorkspaceButton.addActionListener { appendOpenWorkspaceFiles() }
 
@@ -186,7 +205,6 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             }, BorderLayout.WEST)
             add(JPanel(FlowLayout(FlowLayout.RIGHT, 4, 4)).apply {
                 add(copyInputButton)
-                add(appendButton)
                 add(sendButton)
             }, BorderLayout.EAST)
         }
@@ -258,7 +276,6 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             }
             val hasActive = active != null
             sendButton.isEnabled = hasActive
-            appendButton.isEnabled = hasActive
             copyInputButton.isEnabled = hasActive
             copyWorkspaceButton.isEnabled = hasActive
             inputArea.isEnabled = hasActive
@@ -284,11 +301,6 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
     private fun sendDraft() {
         persistDraft()
         conversations.sendDraft()
-    }
-
-    private fun appendDraft() {
-        persistDraft()
-        conversations.appendDraftToTerminal()
     }
 
     private fun copyInputToClipboard() {

@@ -6,9 +6,9 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.colors.EditorColorsManager
-import com.intellij.util.ui.JBUI
 import java.awt.Font
 import java.util.concurrent.CopyOnWriteArrayList
+import javax.swing.text.StyleContext
 
 /**
  * Persistent settings for Pi Agent plugin.
@@ -29,7 +29,6 @@ class PiSettings : PersistentStateComponent<PiSettings.State> {
         var thinkingLevel: String = "Default"
         var extraArgs: String = ""
         var shellPath: String = ""
-        var conversationFont: String = FONT_IDE_EDITOR
         var conversationFontSize: Int = DEFAULT_FONT_SIZE
         // Align with Java/XML boolean default (false) so unchecked values persist.
         var autoOpenFiles: Boolean = false
@@ -54,7 +53,6 @@ class PiSettings : PersistentStateComponent<PiSettings.State> {
         myState.autoOpenFiles = true
         myState.showNotifications = true
         myState.sendWithCtrlEnter = true
-        myState.conversationFont = FONT_IDE_EDITOR
         myState.conversationFontSize = DEFAULT_FONT_SIZE
     }
 
@@ -72,27 +70,16 @@ class PiSettings : PersistentStateComponent<PiSettings.State> {
 
     fun conversationFont(): Font {
         val size = myState.conversationFontSize.coerceIn(MIN_FONT_SIZE, MAX_FONT_SIZE)
-        return Font(resolveFontFamily(myState.conversationFont), Font.PLAIN, size)
+        val family = EditorColorsManager.getInstance().globalScheme.editorFontName
+        // Match Editor > Font family; StyleContext adds CJK fallback the editor uses.
+        return StyleContext.getDefaultStyleContext().getFont(family, Font.PLAIN, size)
     }
 
     companion object {
-        const val FONT_IDE_EDITOR = "IDE Editor"
-        const val FONT_IDE_CONSOLE = "IDE Console"
-        const val FONT_IDE_UI = "IDE UI"
         const val DEFAULT_FONT_SIZE = 14
         const val MIN_FONT_SIZE = 8
         const val MAX_FONT_SIZE = 32
 
         fun getInstance(): PiSettings = service()
-
-        fun resolveFontFamily(name: String): String {
-            val scheme = EditorColorsManager.getInstance().globalScheme
-            return when (name) {
-                FONT_IDE_EDITOR -> scheme.editorFontName
-                FONT_IDE_CONSOLE -> scheme.consoleFontName.ifBlank { scheme.editorFontName }
-                FONT_IDE_UI -> JBUI.Fonts.label().family
-                else -> name.ifBlank { Font.MONOSPACED }
-            }
-        }
     }
 }

@@ -6,7 +6,6 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
-import java.awt.GraphicsEnvironment
 import javax.swing.*
 
 /**
@@ -23,7 +22,6 @@ class PiSettingsConfigurable : Configurable {
     private var autoOpenFilesCheckbox: JCheckBox? = null
     private var showNotificationsCheckbox: JCheckBox? = null
     private var sendShortcutCombo: ComboBox<String>? = null
-    private var conversationFontCombo: ComboBox<String>? = null
     private var conversationFontSizeSpinner: JSpinner? = null
 
     companion object {
@@ -45,18 +43,6 @@ class PiSettingsConfigurable : Configurable {
             val options = mutableListOf("Default")
             models.forEach { options.add("${it.provider}/${it.id}") }
             return options.toTypedArray()
-        }
-
-        fun loadFontOptions(): Array<String> {
-            val presets = listOf(
-                PiSettings.FONT_IDE_EDITOR,
-                PiSettings.FONT_IDE_CONSOLE,
-                PiSettings.FONT_IDE_UI
-            )
-            val system = GraphicsEnvironment.getLocalGraphicsEnvironment()
-                .availableFontFamilyNames
-                .sorted()
-            return (presets + system).distinct().toTypedArray()
         }
     }
 
@@ -86,15 +72,6 @@ class PiSettingsConfigurable : Configurable {
         showNotificationsCheckbox = JCheckBox("Show notification when Pi finishes", settings.showNotifications)
         sendShortcutCombo = ComboBox(SEND_SHORTCUTS).apply {
             selectedItem = if (settings.sendWithCtrlEnter) SEND_CTRL_ENTER else SEND_ENTER
-            preferredSize = java.awt.Dimension(400, preferredSize.height)
-        }
-        val fontOptions = loadFontOptions()
-        conversationFontCombo = ComboBox(fontOptions).apply {
-            val current = settings.conversationFont
-            if (current.isNotBlank() && current !in fontOptions) {
-                addItem(current)
-            }
-            selectedItem = current.ifBlank { PiSettings.FONT_IDE_EDITOR }
             preferredSize = java.awt.Dimension(400, preferredSize.height)
         }
         conversationFontSizeSpinner = JSpinner(
@@ -147,12 +124,11 @@ class PiSettingsConfigurable : Configurable {
                 foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
                 font = JBUI.Fonts.smallFont()
             }, 0)
-            .addLabeledComponent(JBLabel("Conversation font:"), conversationFontCombo!!, 1, false)
-            .addComponentToRightColumn(JBLabel("Applies to history and input. IDE Editor / Console / UI follow the current IDE scheme.").apply {
+            .addLabeledComponent(JBLabel("Conversation font size:"), conversationFontSizeSpinner!!, 1, false)
+            .addComponentToRightColumn(JBLabel("Family follows Settings → Editor → Font. Only size is overridden here.").apply {
                 foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
                 font = JBUI.Fonts.smallFont()
             }, 0)
-            .addLabeledComponent(JBLabel("Conversation font size:"), conversationFontSizeSpinner!!, 1, false)
 
             .addComponentFillVertically(JPanel(), 0)
             .panel
@@ -170,7 +146,6 @@ class PiSettingsConfigurable : Configurable {
                 autoOpenFilesCheckbox?.isSelected != settings.autoOpenFiles ||
                 showNotificationsCheckbox?.isSelected != settings.showNotifications ||
                 (sendShortcutCombo?.selectedItem == SEND_CTRL_ENTER) != settings.sendWithCtrlEnter ||
-                conversationFontCombo?.selectedItem != settings.conversationFont ||
                 fontSizeValue() != settings.conversationFontSize
     }
 
@@ -184,7 +159,6 @@ class PiSettingsConfigurable : Configurable {
         state.autoOpenFiles = autoOpenFilesCheckbox?.isSelected == true
         state.showNotifications = showNotificationsCheckbox?.isSelected == true
         state.sendWithCtrlEnter = sendShortcutCombo?.selectedItem == SEND_CTRL_ENTER
-        state.conversationFont = conversationFontCombo?.selectedItem as? String ?: PiSettings.FONT_IDE_EDITOR
         state.conversationFontSize = fontSizeValue()
         PiSettings.getInstance().notifyChanged()
     }
@@ -199,7 +173,6 @@ class PiSettingsConfigurable : Configurable {
         autoOpenFilesCheckbox?.isSelected = settings.autoOpenFiles
         showNotificationsCheckbox?.isSelected = settings.showNotifications
         sendShortcutCombo?.selectedItem = if (settings.sendWithCtrlEnter) SEND_CTRL_ENTER else SEND_ENTER
-        conversationFontCombo?.selectedItem = settings.conversationFont.ifBlank { PiSettings.FONT_IDE_EDITOR }
         conversationFontSizeSpinner?.value = settings.conversationFontSize.coerceIn(
             PiSettings.MIN_FONT_SIZE,
             PiSettings.MAX_FONT_SIZE

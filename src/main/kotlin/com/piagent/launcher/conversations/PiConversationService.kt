@@ -141,7 +141,9 @@ class PiConversationService(private val project: Project) {
 
     fun appendToDraft(text: String, block: Boolean = false) {
         val conversation = ensureActiveConversation()
-        conversation.draft = upsertFileRefs(conversation.draft, text) ?: mergeDraft(conversation.draft, text, block)
+        // Upsert same-path @file refs first; trailing newline is only a typing aid.
+        val next = upsertFileRefs(conversation.draft, text) ?: mergeDraft(conversation.draft, text, block)
+        conversation.draft = if (next.endsWith("\n")) next else next + "\n"
         showToolWindow(focus = true)
         notifyListeners(ChangeEvent(ChangeKind.DRAFT_APPENDED, conversation.id))
     }

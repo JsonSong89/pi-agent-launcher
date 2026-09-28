@@ -8,6 +8,9 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CustomShortcutSet
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.editor.colors.EditorColorsListener
+import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.DumbAware
@@ -88,6 +91,12 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
     init {
         conversations.addListener(listener)
         PiSettings.getInstance().addChangeListener(settingsListener)
+        ApplicationManager.getApplication().messageBus.connect(this)
+            .subscribe(EditorColorsManager.TOPIC, EditorColorsListener {
+                SwingUtilities.invokeLater {
+                    if (!disposed) applyConversationFont()
+                }
+            })
         setContent(buildUi())
         applyConversationFont()
         refreshUi()

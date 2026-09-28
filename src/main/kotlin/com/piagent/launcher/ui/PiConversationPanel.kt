@@ -32,7 +32,6 @@ import javax.swing.DefaultListCellRenderer
 import javax.swing.JButton
 import javax.swing.JList
 import javax.swing.JPanel
-import javax.swing.JTextArea
 import javax.swing.KeyStroke
 import javax.swing.ScrollPaneConstants
 import javax.swing.SwingUtilities
@@ -148,7 +147,7 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
                     sendDraft()
                 }
             })
-            inputMap.put(KeyStroke.getKeyStroke("shift ENTER"), JTextArea.insertBreakAction)
+            inputMap.put(KeyStroke.getKeyStroke("shift ENTER"), "insert-break")
         }
 
         sendButton.addActionListener { sendDraft() }

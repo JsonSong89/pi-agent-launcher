@@ -99,8 +99,19 @@ class PiTerminalService(private val project: Project) : Disposable {
 
     fun isReady(): Boolean = runningCount() > 0
 
+    /**
+     * Send one user message to the Pi TUI.
+     * executeCommand treats every '\n' as Enter, so a multi-line draft becomes
+     * many messages. Paste the whole block (bracketed paste) and submit once.
+     */
     fun sendText(conversationId: String, text: String) {
-        sessions[conversationId]?.sendTextFn?.invoke(text, true)
+        val fn = sessions[conversationId]?.sendTextFn ?: return
+        val body = text.replace("\r\n", "\n").replace('\r', '\n')
+        fn("\u001b[200~$body\u001b[201~", false)
+        startTimer(Timer(80, null).apply {
+            isRepeats = false
+            addActionListener { fn("\r", false) }
+        })
     }
 
     fun selectTab(conversationId: String, requestFocus: Boolean) {

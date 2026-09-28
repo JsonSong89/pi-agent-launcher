@@ -7,6 +7,7 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.DumbAware
 import com.piagent.launcher.conversations.PiConversationService
 import com.piagent.launcher.services.PiDiffWatcher
+import com.piagent.launcher.settings.PiSettings
 
 /**
  * Send selected code to the active conversation input as a file reference.
@@ -42,9 +43,11 @@ class SendSelectionAction : AnAction(), DumbAware {
             }
         }
 
-        val diffWatcher = PiDiffWatcher.getInstance(project)
-        diffWatcher.snapshotFile(filePath)
-        diffWatcher.startWatching()
+        if (PiSettings.getInstance().state.autoOpenFiles) {
+            val diffWatcher = PiDiffWatcher.getInstance(project)
+            diffWatcher.snapshotFile(filePath)
+            diffWatcher.startWatching()
+        }
 
         PiConversationService.getInstance(project).appendToDraft(reference)
     }

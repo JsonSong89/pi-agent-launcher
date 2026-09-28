@@ -116,6 +116,11 @@ class PiFileWatcher(private val project: Project) : Disposable {
         }
         val path = pendingOpenPaths.poll() ?: return
         queuedOpenPaths.remove(path)
+        if (!PiSettings.getInstance().state.autoOpenFiles) {
+            pendingOpenPaths.clear()
+            queuedOpenPaths.clear()
+            return
+        }
 
         val file = LocalFileSystem.getInstance().findFileByPath(path)
         if (file != null && file.isValid && !file.isDirectory) {

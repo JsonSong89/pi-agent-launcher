@@ -18,6 +18,7 @@ import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.util.Alarm
 import com.intellij.util.messages.MessageBusConnection
+import com.piagent.launcher.settings.PiSettings
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 
@@ -71,6 +72,7 @@ class PiDiffWatcher(private val project: Project) : Disposable {
                 object : BulkFileListener {
                     override fun after(events: List<VFileEvent>) {
                         if (!isWatching) return
+                        if (!PiSettings.getInstance().state.autoOpenFiles) return
                         val projectPath = project.basePath ?: return
                         for (event in events) {
                             if (event !is VFileContentChangeEvent) continue
@@ -104,6 +106,11 @@ class PiDiffWatcher(private val project: Project) : Disposable {
         }
         val path = pendingDiffPaths.poll() ?: return
         queuedDiffPaths.remove(path)
+        if (!PiSettings.getInstance().state.autoOpenFiles) {
+            pendingDiffPaths.clear()
+            queuedDiffPaths.clear()
+            return
+        }
         showDiff(path)
 
         if (pendingDiffPaths.isNotEmpty()) {

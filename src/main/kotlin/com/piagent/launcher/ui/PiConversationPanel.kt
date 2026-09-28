@@ -30,7 +30,6 @@ import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.FlowLayout
-import java.awt.Font
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.awt.event.InputEvent
@@ -80,9 +79,17 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
         }
     }
 
+    private val settingsListener = PiSettings.ChangeListener {
+        SwingUtilities.invokeLater {
+            if (!disposed) applyConversationFont()
+        }
+    }
+
     init {
         conversations.addListener(listener)
+        PiSettings.getInstance().addChangeListener(settingsListener)
         setContent(buildUi())
+        applyConversationFont()
         refreshUi()
     }
 
@@ -144,7 +151,6 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             isEditable = false
             lineWrap = true
             wrapStyleWord = true
-            font = Font(Font.MONOSPACED, Font.PLAIN, font.size)
             emptyText.text = "User messages will appear here"
         }
 
@@ -185,7 +191,7 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
         }
         // IdeEventQueue handles keymap actions before Swing InputMap; bind
         // Ctrl+Enter on this component so the IDE does not swallow it.
-        object : DumbAwareAction() {
+        object : AnAction(), DumbAware {
             override fun actionPerformed(e: AnActionEvent) {
                 sendDraft()
             }
@@ -279,9 +285,16 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             copyInputButton.isEnabled = hasActive
             copyWorkspaceButton.isEnabled = hasActive
             inputArea.isEnabled = hasActive
+            applyConversationFont()
         } finally {
             syncing = false
         }
+    }
+
+    private fun applyConversationFont() {
+        val font = PiSettings.getInstance().conversationFont()
+        historyArea.font = font
+        inputArea.font = font
     }
 
     private fun formatHistory(conversation: PiConversation?): String {
@@ -332,6 +345,7 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
         disposed = true
         persistDraft()
         conversations.removeListener(listener)
+        PiSettings.getInstance().removeChangeListener(settingsListener)
     }
 
     private inner class NewConversationAction : AnAction("New Conversation", "Start a new Pi conversation", AllIcons.General.Add), DumbAware {

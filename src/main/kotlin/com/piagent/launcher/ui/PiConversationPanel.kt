@@ -15,6 +15,7 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.ui.JBColor
+import com.intellij.ui.JBSplitter
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
@@ -23,6 +24,7 @@ import java.awt.datatransfer.StringSelection
 import com.piagent.launcher.conversations.PiConversation
 import com.piagent.launcher.conversations.PiConversationService
 import com.piagent.launcher.conversations.PiConversationService.ChangeKind
+import com.piagent.launcher.settings.PiSettings
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
@@ -52,6 +54,9 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
     private val historyArea = JBTextArea()
     private val inputArea = JBTextArea()
     private val sendButton = JButton("Send")
+    private val appendButton = JButton("Append").apply {
+        toolTipText = "Insert into the Pi terminal without sending"
+    }
     private val copyInputButton = JButton(AllIcons.Actions.Copy).apply {
         toolTipText = "Copy input to clipboard"
     }
@@ -151,16 +156,27 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
                 override fun removeUpdate(e: DocumentEvent) = persistDraft()
                 override fun changedUpdate(e: DocumentEvent) = persistDraft()
             })
-            inputMap.put(KeyStroke.getKeyStroke("ENTER"), "send-pi")
-            actionMap.put("send-pi", object : javax.swing.AbstractAction() {
+            inputMap.put(KeyStroke.getKeyStroke("ENTER"), "pi-enter")
+            inputMap.put(KeyStroke.getKeyStroke("ctrl ENTER"), "pi-ctrl-enter")
+            inputMap.put(KeyStroke.getKeyStroke("shift ENTER"), "insert-break")
+            actionMap.put("pi-enter", object : javax.swing.AbstractAction() {
+                override fun actionPerformed(e: java.awt.event.ActionEvent) {
+                    if (PiSettings.getInstance().state.sendWithCtrlEnter) {
+                        inputArea.replaceSelection("\n")
+                    } else {
+                        sendDraft()
+                    }
+                }
+            })
+            actionMap.put("pi-ctrl-enter", object : javax.swing.AbstractAction() {
                 override fun actionPerformed(e: java.awt.event.ActionEvent) {
                     sendDraft()
                 }
             })
-            inputMap.put(KeyStroke.getKeyStroke("shift ENTER"), "insert-break")
         }
 
         sendButton.addActionListener { sendDraft() }
+        appendButton.addActionListener { appendDraft() }
         copyInputButton.addActionListener { copyInputToClipboard() }
         copyWorkspaceButton.addActionListener { appendOpenWorkspaceFiles() }
 
@@ -170,6 +186,7 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             }, BorderLayout.WEST)
             add(JPanel(FlowLayout(FlowLayout.RIGHT, 4, 4)).apply {
                 add(copyInputButton)
+                add(appendButton)
                 add(sendButton)
             }, BorderLayout.EAST)
         }
@@ -179,7 +196,8 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
                 JBUI.Borders.customLine(JBColor.namedColor("Separator.separatorColor", JBColor.border()), 1, 0, 0, 0),
                 JBUI.Borders.empty(10, 8, 8, 8)
             )
-            preferredSize = Dimension(0, JBUI.scale(140))
+            preferredSize = Dimension(0, JBUI.scale(350))
+            minimumSize = Dimension(0, JBUI.scale(140))
             add(JBLabel("Input").apply {
                 font = JBUI.Fonts.smallFont()
                 foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
@@ -194,14 +212,23 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             add(inputPanel, BorderLayout.CENTER)
         }
 
+        val historyScroll = JBScrollPane(
+            historyArea,
+            ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+        ).apply {
+            minimumSize = Dimension(0, JBUI.scale(80))
+        }
+
+        val splitter = JBSplitter(true, 0.52f).apply {
+            firstComponent = historyScroll
+            secondComponent = south
+            setHonorComponentsMinimumSize(true)
+        }
+
         return JPanel(BorderLayout()).apply {
             add(header, BorderLayout.NORTH)
-            add(JBScrollPane(
-                historyArea,
-                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
-                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
-            ), BorderLayout.CENTER)
-            add(south, BorderLayout.SOUTH)
+            add(splitter, BorderLayout.CENTER)
         }
     }
 
@@ -231,6 +258,7 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             }
             val hasActive = active != null
             sendButton.isEnabled = hasActive
+            appendButton.isEnabled = hasActive
             copyInputButton.isEnabled = hasActive
             copyWorkspaceButton.isEnabled = hasActive
             inputArea.isEnabled = hasActive
@@ -256,6 +284,11 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
     private fun sendDraft() {
         persistDraft()
         conversations.sendDraft()
+    }
+
+    private fun appendDraft() {
+        persistDraft()
+        conversations.appendDraftToTerminal()
     }
 
     private fun copyInputToClipboard() {
@@ -326,15 +359,8 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
 
     private inner class DeleteConversationAction : AnAction("Delete Conversation", "Close the terminal and delete this conversation", AllIcons.General.Remove), DumbAware {
         override fun actionPerformed(e: AnActionEvent) {
-            val active = conversations.active() ?: return
-            val confirmed = Messages.showYesNoDialog(
-                project,
-                "Delete ${active.title}? This closes its terminal and removes local send history.",
-                "Delete Conversation",
-                Messages.getQuestionIcon()
-            ) == Messages.YES
-            if (!confirmed) return
-            conversations.deleteConversation(active.id)
+            val id = conversations.active()?.id ?: return
+            conversations.deleteConversation(id)
         }
 
         override fun update(e: AnActionEvent) {

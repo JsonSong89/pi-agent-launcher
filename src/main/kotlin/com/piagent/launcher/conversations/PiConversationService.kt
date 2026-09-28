@@ -180,6 +180,26 @@ class PiConversationService(private val project: Project) {
         return true
     }
 
+    fun appendDraftToTerminal(): Boolean {
+        val conversation = active() ?: return false
+        val text = conversation.draft.trim()
+        if (text.isEmpty()) return false
+
+        if (!terminal().isAlive(conversation.id)) {
+            terminal().launch(conversation.id, conversation.tabName)
+            showNotification(
+                "Pi terminal was restarted for ${conversation.title}. Append again after Pi is ready.",
+                NotificationType.WARNING
+            )
+            notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, conversation.id))
+            return false
+        }
+
+        terminal().insertText(conversation.id, text)
+        terminal().selectTab(conversation.id, requestFocus = false)
+        return true
+    }
+
     fun isTerminalAlive(id: String): Boolean = terminal().isAlive(id)
 
     fun focusTerminal(id: String) {

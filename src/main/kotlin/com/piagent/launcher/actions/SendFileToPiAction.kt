@@ -18,7 +18,8 @@ import com.piagent.launcher.conversations.PiConversationService
  * Send file(s) from Project View to the active conversation input.
  * Format: @relative/path/to/file.go
  *
- * Update runs on BGT so Project View file keys are actually available.
+ * Project View often also exposes the parent directory. If any file is
+ * selected, only files are sent — never their ancestor folders.
  */
 class SendFileToPiAction : AnAction(), DumbAware {
 
@@ -30,7 +31,7 @@ class SendFileToPiAction : AnAction(), DumbAware {
         val projectPath = project.basePath ?: ""
         val references = virtualFiles
             .distinctBy { it.path }
-            .joinToString(" ") { file ->
+            .joinToString("\n") { file ->
                 val relativePath = if (file.path.startsWith(projectPath)) {
                     file.path.removePrefix(projectPath).removePrefix("/")
                 } else {
@@ -40,7 +41,7 @@ class SendFileToPiAction : AnAction(), DumbAware {
             }
 
         if (references.isBlank()) return
-        PiConversationService.getInstance(project).appendToDraft("$references ")
+        PiConversationService.getInstance(project).appendToDraft(references, block = true)
     }
 
     override fun update(e: AnActionEvent) {
@@ -57,10 +58,6 @@ class SendFileToPiAction : AnAction(), DumbAware {
         e.getData(CommonDataKeys.VIRTUAL_FILE)?.let { found.add(it) }
         e.getData(PlatformDataKeys.VIRTUAL_FILE_ARRAY)?.forEach { found.add(it) }
 
-        e.getData(LangDataKeys.IDE_VIEW)?.directories?.forEach { dir ->
-            dir.virtualFile?.let { found.add(it) }
-        }
-
         e.getData(LangDataKeys.PSI_ELEMENT_ARRAY)?.forEach { addPsiFile(found, it) }
         e.getData(CommonDataKeys.PSI_ELEMENT)?.let { addPsiFile(found, it) }
         e.getData(CommonDataKeys.PSI_FILE)?.virtualFile?.let { found.add(it) }
@@ -72,7 +69,19 @@ class SendFileToPiAction : AnAction(), DumbAware {
             }
         }
 
-        return found.toList()
+        return preferSelectedFiles(found)
+    }
+
+    /**
+     * IDE_VIEW / PSI often include the parent folder of a clicked file.
+     * Keep files when any exist; only send directories when nothing else was chosen.
+     */
+    private fun preferSelectedFiles(found: Set<VirtualFile>): List<VirtualFile> {
+        val files = found.filter { !it.isDirectory }
+        if (files.isNotEmpty()) {
+            return files
+        }
+        return found.filter { it.isDirectory }
     }
 
     private fun addPsiFile(found: MutableSet<VirtualFile>, element: PsiElement) {

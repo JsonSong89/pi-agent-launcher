@@ -21,8 +21,13 @@ class PiSettingsConfigurable : Configurable {
     private var extraArgsField: JBTextField? = null
     private var autoOpenFilesCheckbox: JCheckBox? = null
     private var showNotificationsCheckbox: JCheckBox? = null
+    private var sendShortcutCombo: ComboBox<String>? = null
 
     companion object {
+        const val SEND_CTRL_ENTER = "Ctrl+Enter"
+        const val SEND_ENTER = "Enter"
+        val SEND_SHORTCUTS = arrayOf(SEND_CTRL_ENTER, SEND_ENTER)
+
         val THINKING_LEVELS = arrayOf(
             "Default",
             "none",
@@ -59,9 +64,15 @@ class PiSettingsConfigurable : Configurable {
             selectedItem = if (settings.thinkingLevel in THINKING_LEVELS) settings.thinkingLevel else "Default"
             preferredSize = java.awt.Dimension(400, preferredSize.height)
         }
-        extraArgsField = JBTextField(settings.extraArgs)
+        extraArgsField = JBTextField(settings.extraArgs).apply {
+            emptyText.text = "e.g. --no-themes --verbose"
+        }
         autoOpenFilesCheckbox = JCheckBox("Auto-open files modified by Pi", settings.autoOpenFiles)
         showNotificationsCheckbox = JCheckBox("Show notification when Pi finishes", settings.showNotifications)
+        sendShortcutCombo = ComboBox(SEND_SHORTCUTS).apply {
+            selectedItem = if (settings.sendWithCtrlEnter) SEND_CTRL_ENTER else SEND_ENTER
+            preferredSize = java.awt.Dimension(400, preferredSize.height)
+        }
 
         panel = FormBuilder.createFormBuilder()
             // Model section
@@ -99,6 +110,11 @@ class PiSettingsConfigurable : Configurable {
             })
             .addComponent(autoOpenFilesCheckbox!!, 1)
             .addComponent(showNotificationsCheckbox!!, 1)
+            .addLabeledComponent(JBLabel("Send shortcut:"), sendShortcutCombo!!, 1, false)
+            .addComponentToRightColumn(JBLabel("Ctrl+Enter avoids IME Enter confirming a candidate and sending by mistake.").apply {
+                foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
+                font = JBUI.Fonts.smallFont()
+            }, 0)
 
             .addComponentFillVertically(JPanel(), 0)
             .panel
@@ -114,7 +130,8 @@ class PiSettingsConfigurable : Configurable {
                 thinkingLevelCombo?.selectedItem != settings.thinkingLevel ||
                 extraArgsField?.text != settings.extraArgs ||
                 autoOpenFilesCheckbox?.isSelected != settings.autoOpenFiles ||
-                showNotificationsCheckbox?.isSelected != settings.showNotifications
+                showNotificationsCheckbox?.isSelected != settings.showNotifications ||
+                (sendShortcutCombo?.selectedItem == SEND_CTRL_ENTER) != settings.sendWithCtrlEnter
     }
 
     override fun apply() {
@@ -127,7 +144,9 @@ class PiSettingsConfigurable : Configurable {
                 thinkingLevel = thinkingLevelCombo?.selectedItem as? String ?: "Default",
                 extraArgs = extraArgsField?.text ?: "",
                 autoOpenFiles = autoOpenFilesCheckbox?.isSelected ?: true,
-                showNotifications = showNotificationsCheckbox?.isSelected ?: true
+                showNotifications = showNotificationsCheckbox?.isSelected ?: true,
+                sendWithCtrlEnter = sendShortcutCombo?.selectedItem == SEND_CTRL_ENTER,
+                shellPath = settings.getState().shellPath
             )
         )
     }
@@ -141,6 +160,7 @@ class PiSettingsConfigurable : Configurable {
         extraArgsField?.text = settings.extraArgs
         autoOpenFilesCheckbox?.isSelected = settings.autoOpenFiles
         showNotificationsCheckbox?.isSelected = settings.showNotifications
+        sendShortcutCombo?.selectedItem = if (settings.sendWithCtrlEnter) SEND_CTRL_ENTER else SEND_ENTER
     }
 
     override fun disposeUIResources() {

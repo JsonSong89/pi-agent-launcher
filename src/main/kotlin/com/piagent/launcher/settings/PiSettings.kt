@@ -23,6 +23,7 @@ class PiSettings : PersistentStateComponent<PiSettings.State> {
         var thinkingLevel: String = "Default",
         var autoOpenFiles: Boolean = true,
         var showNotifications: Boolean = true,
+        var sendWithCtrlEnter: Boolean = true,
         var shellPath: String = "",
         var extraArgs: String = ""
     )

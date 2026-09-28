@@ -1,20 +1,12 @@
 ---
-description: 不在本机编译；需要验证时 push 到 GitHub 并检查 Actions
+description: 不在本机编译；需要验证时等用户要求再 push，然后检查 Actions
 alwaysApply: true
 ---
 
 # 用 GitHub Actions 验证，不要本机编译
 
 - 不要在本机跑 `./gradlew`、`compileKotlin`、`buildPlugin` 或等价本地构建来验证。
-- 改完需要验证时：提交并 `git push`，触发 `.github/workflows/build.yml`。
-- Push 之后立刻检查最新 Actions run（当前分支），等到结束再下结论。
-- 失败时先读失败 step 的日志，修最小改动，再 push，再次等 Actions。
+- 不要默认 `git push`。只有用户明确说 push / 推送时才 push。
+- 用户要求 push 之后，再检查最新 Actions run，等到结束再下结论。
+- 失败时先读失败 step 的日志，修最小改动；修好后依然等用户要求再 push。
 - 本机环境缺少 IntelliJ SDK / Homebrew JDK 路径，本地编译结果不能当依据。
-
-```bash
-# 查当前分支最新 run
-# gh run list --branch "$(git branch --show-current)" --limit 1
-# gh run watch <id>
-# 失败后：
-# gh run view <id> --log-failed
-```

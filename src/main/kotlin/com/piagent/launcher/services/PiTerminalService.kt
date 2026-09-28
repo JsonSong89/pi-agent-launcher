@@ -114,6 +114,15 @@ class PiTerminalService(private val project: Project) : Disposable {
         })
     }
 
+    /**
+     * Insert into the Pi TUI input without submitting.
+     */
+    fun insertText(conversationId: String, text: String) {
+        val fn = sessions[conversationId]?.sendTextFn ?: return
+        val body = text.replace("\r\n", "\n").replace('\r', '\n')
+        fn("\u001b[200~$body\u001b[201~", false)
+    }
+
     fun selectTab(conversationId: String, requestFocus: Boolean) {
         val session = sessions[conversationId] ?: return
         if (!isTerminalAlive(session)) return
@@ -252,8 +261,6 @@ class PiTerminalService(private val project: Project) : Disposable {
             if (settings.thinkingLevel != "Default" && settings.thinkingLevel.isNotBlank()) {
                 append(" --thinking ${settings.thinkingLevel}")
             }
-
-            append(" --no-themes")
 
             if (settings.extraArgs.isNotBlank()) {
                 append(" ")

@@ -7,16 +7,19 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.ComboBox
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
+import java.awt.datatransfer.StringSelection
 import com.piagent.launcher.conversations.PiConversation
 import com.piagent.launcher.conversations.PiConversationService
 import com.piagent.launcher.conversations.PiConversationService.ChangeKind
@@ -49,6 +52,12 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
     private val historyArea = JBTextArea()
     private val inputArea = JBTextArea()
     private val sendButton = JButton("Send")
+    private val copyInputButton = JButton(AllIcons.Actions.Copy).apply {
+        toolTipText = "Copy input to clipboard"
+    }
+    private val copyWorkspaceButton = JButton(AllIcons.General.OpenDisk).apply {
+        toolTipText = "Append open workspace files to input"
+    }
     private val timeFormat = SimpleDateFormat("HH:mm")
     private var syncing = false
     @Volatile
@@ -100,6 +109,7 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             "PiConversationsToolbar",
             DefaultActionGroup().apply {
                 add(NewConversationAction())
+                add(RenameConversationAction())
                 add(DeleteConversationAction())
                 addSeparator()
                 add(CheckTerminalAction())
@@ -151,14 +161,37 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
         }
 
         sendButton.addActionListener { sendDraft() }
+        copyInputButton.addActionListener { copyInputToClipboard() }
+        copyWorkspaceButton.addActionListener { appendOpenWorkspaceFiles() }
+
+        val buttonRow = JPanel(BorderLayout()).apply {
+            add(JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
+                add(copyWorkspaceButton)
+            }, BorderLayout.WEST)
+            add(JPanel(FlowLayout(FlowLayout.RIGHT, 4, 4)).apply {
+                add(copyInputButton)
+                add(sendButton)
+            }, BorderLayout.EAST)
+        }
 
         val inputPanel = JPanel(BorderLayout()).apply {
-            border = JBUI.Borders.empty(4, 8, 8, 8)
-            preferredSize = Dimension(0, JBUI.scale(120))
+            border = JBUI.Borders.compound(
+                JBUI.Borders.customLine(JBColor.namedColor("Separator.separatorColor", JBColor.border()), 1, 0, 0, 0),
+                JBUI.Borders.empty(10, 8, 8, 8)
+            )
+            preferredSize = Dimension(0, JBUI.scale(140))
+            add(JBLabel("Input").apply {
+                font = JBUI.Fonts.smallFont()
+                foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
+                border = JBUI.Borders.emptyBottom(4)
+            }, BorderLayout.NORTH)
             add(JBScrollPane(inputArea), BorderLayout.CENTER)
-            add(JPanel(FlowLayout(FlowLayout.RIGHT, 0, 4)).apply {
-                add(sendButton)
-            }, BorderLayout.SOUTH)
+            add(buttonRow, BorderLayout.SOUTH)
+        }
+
+        val south = JPanel(BorderLayout()).apply {
+            add(javax.swing.JSeparator(), BorderLayout.NORTH)
+            add(inputPanel, BorderLayout.CENTER)
         }
 
         return JPanel(BorderLayout()).apply {
@@ -168,7 +201,7 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
             ), BorderLayout.CENTER)
-            add(inputPanel, BorderLayout.SOUTH)
+            add(south, BorderLayout.SOUTH)
         }
     }
 
@@ -196,8 +229,11 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
                 alive -> "${active.title} · terminal running"
                 else -> "${active.title} · terminal closed"
             }
-            sendButton.isEnabled = active != null
-            inputArea.isEnabled = active != null
+            val hasActive = active != null
+            sendButton.isEnabled = hasActive
+            copyInputButton.isEnabled = hasActive
+            copyWorkspaceButton.isEnabled = hasActive
+            inputArea.isEnabled = hasActive
         } finally {
             syncing = false
         }
@@ -222,6 +258,35 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
         conversations.sendDraft()
     }
 
+    private fun copyInputToClipboard() {
+        persistDraft()
+        CopyPasteManager.getInstance().setContents(StringSelection(inputArea.text))
+    }
+
+    private fun appendOpenWorkspaceFiles() {
+        persistDraft()
+        val projectPath = project.basePath ?: ""
+        val paths = FileEditorManager.getInstance(project).openFiles
+            .filter { it.isValid && !it.isDirectory }
+            .map { file ->
+                if (file.path.startsWith(projectPath)) {
+                    file.path.removePrefix(projectPath).removePrefix("/")
+                } else {
+                    file.path
+                }
+            }
+            .distinct()
+        if (paths.isEmpty()) {
+            Messages.showInfoMessage(project, "No open workspace files.", "Pi Agent")
+            return
+        }
+        val block = buildString {
+            append("当前用户的workplace打开的文件:")
+            paths.forEach { append('\n').append(it) }
+        }
+        conversations.appendToDraft(block, block = true)
+    }
+
     override fun dispose() {
         disposed = true
         persistDraft()
@@ -232,6 +297,28 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
         override fun actionPerformed(e: AnActionEvent) {
             persistDraft()
             conversations.createConversation()
+        }
+
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+    }
+
+    private inner class RenameConversationAction : AnAction("Rename Conversation", "Rename the active conversation", AllIcons.Actions.Edit), DumbAware {
+        override fun actionPerformed(e: AnActionEvent) {
+            val active = conversations.active() ?: return
+            val newTitle = Messages.showInputDialog(
+                project,
+                "Conversation name",
+                "Rename Conversation",
+                Messages.getQuestionIcon(),
+                active.title,
+                null
+            )?.trim() ?: return
+            if (newTitle.isEmpty()) return
+            conversations.rename(active.id, newTitle)
+        }
+
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabled = conversations.active() != null
         }
 
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT

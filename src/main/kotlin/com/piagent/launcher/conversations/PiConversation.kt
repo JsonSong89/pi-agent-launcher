@@ -6,7 +6,7 @@ package com.piagent.launcher.conversations
  */
 class PiConversation(
     val id: String,
-    val title: String,
+    var title: String,
     val tabName: String,
     val createdAt: Long = System.currentTimeMillis(),
     val messages: MutableList<PiUserMessage> = mutableListOf(),

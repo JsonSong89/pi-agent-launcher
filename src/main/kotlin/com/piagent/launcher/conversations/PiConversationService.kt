@@ -9,6 +9,8 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.piagent.launcher.services.PiFileWatcher
 import com.piagent.launcher.services.PiStatusWidget
 import com.piagent.launcher.services.PiTerminalService
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
@@ -79,10 +81,11 @@ class PiConversationService(private val project: Project) {
 
     fun createConversation(): PiConversation {
         val n = titleSeq.getAndIncrement()
+        val title = "Pi-$n-${LocalDateTime.now().format(TITLE_TIME_FORMAT)}"
         val conversation = PiConversation(
             id = UUID.randomUUID().toString(),
-            title = "Pi $n",
-            tabName = "Pi $n"
+            title = title,
+            tabName = title
         )
         synchronized(conversations) {
             conversations[conversation.id] = conversation
@@ -123,17 +126,35 @@ class PiConversationService(private val project: Project) {
         notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, activeId))
     }
 
+    fun rename(id: String, newTitle: String) {
+        val conversation = get(id) ?: return
+        val trimmed = newTitle.trim()
+        if (trimmed.isEmpty() || trimmed == conversation.title) return
+        conversation.title = trimmed
+        notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
+    }
+
     fun updateDraft(id: String, draft: String) {
         val conversation = get(id) ?: return
         conversation.draft = draft
     }
 
-    fun appendToDraft(text: String) {
+    fun appendToDraft(text: String, block: Boolean = false) {
         val conversation = ensureActiveConversation()
-        val prefix = if (conversation.draft.isBlank() || conversation.draft.endsWith(" ")) "" else " "
-        conversation.draft = conversation.draft + prefix + text
+        conversation.draft = mergeDraft(conversation.draft, text, block)
         showToolWindow(focus = true)
         notifyListeners(ChangeEvent(ChangeKind.DRAFT_APPENDED, conversation.id))
+    }
+
+    private fun mergeDraft(draft: String, text: String, block: Boolean): String {
+        if (draft.isBlank()) return text
+        return if (block) {
+            draft.trimEnd() + "\n\n" + text
+        } else if (draft.endsWith(" ") || draft.endsWith("\n")) {
+            draft + text
+        } else {
+            draft + " " + text
+        }
     }
 
     fun sendDraft(): Boolean {
@@ -204,6 +225,7 @@ class PiConversationService(private val project: Project) {
 
     companion object {
         const val TOOL_WINDOW_ID = "Pi Agent"
+        private val TITLE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
 
         fun getInstance(project: Project): PiConversationService = project.service()
     }

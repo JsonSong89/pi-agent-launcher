@@ -1,23 +1,26 @@
 package com.piagent.launcher.actions
 
-import com.piagent.launcher.services.PiFileWatcher
-import com.piagent.launcher.services.PiTerminalService
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.project.DumbAware
+import com.piagent.launcher.conversations.PiConversationService
 
 /**
- * One-click launch Pi as a tab in the Terminal tool window.
+ * Toolbar button: open the conversation window and start a new Pi session.
  */
-class LaunchPiAction : AnAction() {
+class LaunchPiAction : AnAction(), DumbAware {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        val service = PiTerminalService.getInstance(project)
-        service.launch()
-        PiFileWatcher.getInstance(project).startWatching()
+        val conversations = PiConversationService.getInstance(project)
+        conversations.showToolWindow(focus = true)
+        conversations.createConversation()
     }
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabledAndVisible = e.project != null
     }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 }

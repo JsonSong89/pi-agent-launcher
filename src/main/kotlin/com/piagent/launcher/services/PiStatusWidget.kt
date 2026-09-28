@@ -1,15 +1,13 @@
 package com.piagent.launcher.services
 
-import com.intellij.openapi.components.Service
-import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.util.Consumer
+import com.piagent.launcher.conversations.PiConversationService
 import java.awt.event.MouseEvent
-import javax.swing.Icon
 
 /**
  * Status bar widget showing Pi running state.
@@ -38,17 +36,27 @@ class PiStatusWidget(private val project: Project) : StatusBarWidget, StatusBarW
     override fun getPresentation(): StatusBarWidget.WidgetPresentation = this
 
     override fun getText(): String {
-        val service = PiTerminalService.getInstance(project)
-        return if (service.isReady()) "π Running" else "π Idle"
+        val running = PiTerminalService.getInstance(project).runningCount()
+        return when {
+            running <= 0 -> "π Idle"
+            running == 1 -> "π Running"
+            else -> "π $running Running"
+        }
     }
 
     override fun getTooltipText(): String {
-        val service = PiTerminalService.getInstance(project)
-        return if (service.isReady()) "Pi Agent is running. Click to focus." else "Pi Agent is idle. Click to launch."
+        val running = PiTerminalService.getInstance(project).runningCount()
+        return if (running > 0) {
+            "Pi Agent: $running terminal(s) running. Click to open conversations."
+        } else {
+            "Pi Agent is idle. Click to open conversations."
+        }
     }
 
     override fun getClickConsumer(): Consumer<MouseEvent> = Consumer {
-        PiTerminalService.getInstance(project).launch()
+        val conversations = PiConversationService.getInstance(project)
+        conversations.showToolWindow(focus = true)
+        conversations.ensureActiveConversation()
     }
 
     override fun getAlignment(): Float = 0f

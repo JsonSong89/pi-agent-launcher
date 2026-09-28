@@ -71,6 +71,12 @@
         <projectService serviceImplementation="com.piagent.launcher.services.PiTerminalService"/>
         <projectService serviceImplementation="com.piagent.launcher.services.PiDiffWatcher"/>
         <projectService serviceImplementation="com.piagent.launcher.services.PiFileWatcher"/>
+        <projectService serviceImplementation="com.piagent.launcher.conversations.PiConversationService"/>
+
+        <toolWindow id="Pi Agent"
+                    anchor="right"
+                    icon="/icons/pi.svg"
+                    factoryClass="com.piagent.launcher.ui.PiConversationToolWindowFactory"/>
 
         <applicationService serviceImplementation="com.piagent.launcher.settings.PiSettings"/>
 
@@ -87,7 +93,7 @@
 
         <notificationGroup id="Pi Agent"
                            displayType="BALLOON"
-                           toolWindowId="Terminal"/>
+                           toolWindowId="Pi Agent"/>
     </extensions>
 
     <actions>
@@ -95,7 +101,7 @@
         <action id="Pi.Launch"
                 class="com.piagent.launcher.actions.LaunchPiAction"
                 text="Launch Pi"
-                description="Launch Pi agent in Terminal"
+                description="Open the conversation window and start a new Pi session"
                 icon="/icons/pi.svg">
             <add-to-group group-id="MainToolbarRight" anchor="last"/>
         </action>
@@ -104,7 +110,7 @@
         <action id="Pi.OpenToolWindow"
                 class="com.piagent.launcher.actions.OpenPiAction"
                 text="Open Pi Agent"
-                description="Launch or focus Pi agent terminal"
+                description="Open the Pi conversation window"
                 icon="/icons/pi.svg">
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift BACK_QUOTE"/>
         </action>

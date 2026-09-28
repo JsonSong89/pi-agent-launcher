@@ -1,22 +1,26 @@
 package com.piagent.launcher.actions
 
-import com.piagent.launcher.services.PiTerminalService
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.project.DumbAware
+import com.piagent.launcher.conversations.PiConversationService
 
 /**
- * Toggle/focus Pi terminal tab.
- * Cmd+Esc to launch or focus.
+ * Open or focus the Pi conversation tool window.
  */
-class OpenPiAction : AnAction() {
+class OpenPiAction : AnAction(), DumbAware {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        val service = PiTerminalService.getInstance(project)
-        service.launch()
+        val conversations = PiConversationService.getInstance(project)
+        conversations.showToolWindow(focus = true)
+        conversations.ensureActiveConversation()
     }
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabledAndVisible = e.project != null
     }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 }

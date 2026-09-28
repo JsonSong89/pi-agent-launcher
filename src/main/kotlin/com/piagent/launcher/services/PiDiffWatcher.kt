@@ -4,61 +4,56 @@ import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffManager
 import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
+import com.intellij.util.Alarm
 import com.intellij.util.messages.MessageBusConnection
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
  * Watches for file changes made by Pi and shows diff previews in the IDE.
+ *
+ * VFS after() only enqueues paths. Diff windows are opened later on EDT
+ * so we never upgrade write-intent to write on the VFS dispatch thread.
  */
 @Service(Service.Level.PROJECT)
 class PiDiffWatcher(private val project: Project) : Disposable {
 
     private val logger = Logger.getInstance(PiDiffWatcher::class.java)
     private val snapshots = ConcurrentHashMap<String, String>()
+    private val pendingDiffPaths = ConcurrentLinkedQueue<String>()
+    private val queuedDiffPaths = ConcurrentHashMap.newKeySet<String>()
+    private val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+    @Volatile
     private var isWatching = false
     private var connection: MessageBusConnection? = null
 
     fun startWatching() {
         if (isWatching) return
         isWatching = true
-
+        pendingDiffPaths.clear()
+        queuedDiffPaths.clear()
         snapshotOpenFiles()
-
-        connection?.disconnect()
-
-        connection = project.messageBus.connect(this).also { conn ->
-            conn.subscribe(
-                com.intellij.openapi.vfs.VirtualFileManager.VFS_CHANGES,
-                object : BulkFileListener {
-                    override fun after(events: List<VFileEvent>) {
-                        if (!isWatching) return
-                        for (event in events) {
-                            if (event is VFileContentChangeEvent) {
-                                handleFileChange(event.file)
-                            }
-                        }
-                    }
-                }
-            )
-        }
-
+        ensureConnection()
         logger.info("Pi diff watcher started, tracking ${snapshots.size} files")
     }
 
     fun stopWatching() {
         isWatching = false
-        connection?.disconnect()
-        connection = null
+        alarm.cancelAllRequests()
+        pendingDiffPaths.clear()
+        queuedDiffPaths.clear()
         snapshots.clear()
     }
 
@@ -68,12 +63,60 @@ class PiDiffWatcher(private val project: Project) : Disposable {
         snapshots[filePath] = document.text
     }
 
-    fun showDiff(filePath: String) {
+    private fun ensureConnection() {
+        if (connection != null) return
+        connection = project.messageBus.connect(this).also { conn ->
+            conn.subscribe(
+                VirtualFileManager.VFS_CHANGES,
+                object : BulkFileListener {
+                    override fun after(events: List<VFileEvent>) {
+                        if (!isWatching) return
+                        val projectPath = project.basePath ?: return
+                        for (event in events) {
+                            if (event !is VFileContentChangeEvent) continue
+                            val path = event.file.path
+                            if (!path.startsWith(projectPath)) continue
+                            if (!snapshots.containsKey(path)) continue
+                            enqueueDiff(path)
+                        }
+                    }
+                }
+            )
+        }
+    }
+
+    private fun enqueueDiff(path: String) {
+        if (!queuedDiffPaths.add(path)) return
+        pendingDiffPaths.add(path)
+        alarm.cancelAllRequests()
+        alarm.addRequest({ flushNextDiff() }, DEBOUNCE_MS)
+    }
+
+    private fun flushNextDiff() {
+        runOutsideVfs { showOnePendingDiff() }
+    }
+
+    private fun showOnePendingDiff() {
+        if (project.isDisposed || !isWatching) {
+            pendingDiffPaths.clear()
+            queuedDiffPaths.clear()
+            return
+        }
+        val path = pendingDiffPaths.poll() ?: return
+        queuedDiffPaths.remove(path)
+        showDiff(path)
+
+        if (pendingDiffPaths.isNotEmpty()) {
+            alarm.addRequest({ flushNextDiff() }, DIFF_GAP_MS)
+        }
+    }
+
+    private fun showDiff(filePath: String) {
         val originalContent = snapshots[filePath] ?: return
         val vFile = LocalFileSystem.getInstance().findFileByPath(filePath) ?: return
+        if (!vFile.isValid) return
         val document = FileDocumentManager.getInstance().getDocument(vFile) ?: return
         val newContent = document.text
-
         if (originalContent == newContent) return
 
         val diffContentFactory = DiffContentFactory.getInstance()
@@ -84,7 +127,6 @@ class PiDiffWatcher(private val project: Project) : Disposable {
             "Before Pi",
             "After Pi"
         )
-
         DiffManager.getInstance().showDiff(project, request)
     }
 
@@ -99,22 +141,28 @@ class PiDiffWatcher(private val project: Project) : Disposable {
         }
     }
 
-    private fun handleFileChange(file: VirtualFile) {
-        val filePath = file.path
-        val projectPath = project.basePath ?: return
-
-        if (!filePath.startsWith(projectPath)) return
-
-        if (snapshots.containsKey(filePath)) {
-            showDiff(filePath)
-        }
+    private fun runOutsideVfs(work: () -> Unit) {
+        ApplicationManager.getApplication().invokeLater({
+            if (!project.isDisposed) {
+                work()
+            }
+        }, ModalityState.nonModal(), project.disposed)
     }
 
     override fun dispose() {
-        stopWatching()
+        isWatching = false
+        alarm.cancelAllRequests()
+        pendingDiffPaths.clear()
+        queuedDiffPaths.clear()
+        connection?.disconnect()
+        connection = null
+        snapshots.clear()
     }
 
     companion object {
+        private const val DEBOUNCE_MS = 800
+        private const val DIFF_GAP_MS = 400
+
         fun getInstance(project: Project): PiDiffWatcher = project.service()
     }
 }

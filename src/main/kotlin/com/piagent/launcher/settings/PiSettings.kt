@@ -31,8 +31,6 @@ class PiSettings : PersistentStateComponent<PiSettings.State> {
         var shellPath: String = ""
         var conversationFontSize: Int = DEFAULT_FONT_SIZE
         // Align with Java/XML boolean default (false) so unchecked values persist.
-        var autoOpenFiles: Boolean = false
-        var showNotifications: Boolean = false
         var sendWithCtrlEnter: Boolean = false
     }
 
@@ -50,8 +48,6 @@ class PiSettings : PersistentStateComponent<PiSettings.State> {
     }
 
     override fun noStateLoaded() {
-        myState.autoOpenFiles = true
-        myState.showNotifications = true
         myState.sendWithCtrlEnter = true
         myState.conversationFontSize = DEFAULT_FONT_SIZE
     }

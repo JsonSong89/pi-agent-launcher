@@ -6,7 +6,6 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
-import com.piagent.launcher.services.PiFileWatcher
 import com.piagent.launcher.services.PiStatusWidget
 import com.piagent.launcher.services.PiTerminalService
 import java.time.LocalDateTime
@@ -92,7 +91,6 @@ class PiConversationService(private val project: Project) {
             activeId = conversation.id
         }
         terminal().launch(conversation.id, conversation.tabName)
-        PiFileWatcher.getInstance(project).startWatching()
         PiStatusWidget.update(project)
         notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, conversation.id))
         return conversation

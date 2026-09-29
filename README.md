@@ -12,8 +12,6 @@ One-click [Pi coding agent](https://pi.dev) launcher for JetBrains IDEs — open
 - **One-click launch** — Click the π button in the toolbar to start Pi
 - **Terminal integration** — Pi runs as a tab inside the IDE's Terminal window (alongside Local)
 - **Send to Pi** — Select code → Right-click → "Send to Pi" inserts `@path/file.go#L10-25` into Pi's input
-- **Auto-open files** — Files modified by Pi automatically open in the editor
-- **Completion notifications** — Get notified when Pi finishes
 - **Model configuration** — Pick model and thinking level from `~/.pi/agent/models.json`
 
 ## Keyboard Shortcuts
@@ -39,8 +37,8 @@ One-click [Pi coding agent](https://pi.dev) launcher for JetBrains IDEs — open
 - **Thinking level** — Default / none / low / medium / high / max
 - **Pi command** — Custom path to pi binary
 - **Extra arguments** — Additional CLI flags
-- **Auto-open files** — Toggle auto-opening modified files
-- **Notifications** — Toggle completion notifications
+- **Send shortcut** — Ctrl+Enter or Enter
+- **Conversation font size** — Size only; family follows Editor → Font
 
 ## Supported IDEs
 
@@ -69,8 +67,7 @@ src/main/kotlin/com/piagent/launcher/
 │   └── SendSelectionAction.kt     # Send @file#L reference
 ├── services/
 │   ├── PiTerminalService.kt       # Terminal lifecycle + send text
-│   ├── PiDiffWatcher.kt           # File change → diff preview
-│   └── PiFileWatcher.kt           # Auto-open + notifications
+│   └── PiStatusWidget.kt          # Status bar running count
 └── settings/
     ├── PiSettings.kt              # Persistent config
     ├── PiSettingsConfigurable.kt  # Settings UI panel

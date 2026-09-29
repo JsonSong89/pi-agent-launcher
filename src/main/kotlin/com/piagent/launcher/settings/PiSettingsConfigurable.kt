@@ -19,8 +19,6 @@ class PiSettingsConfigurable : Configurable {
     private var customModelField: JBTextField? = null
     private var thinkingLevelCombo: ComboBox<String>? = null
     private var extraArgsField: JBTextField? = null
-    private var autoOpenFilesCheckbox: JCheckBox? = null
-    private var showNotificationsCheckbox: JCheckBox? = null
     private var sendShortcutCombo: ComboBox<String>? = null
     private var conversationFontSizeSpinner: JSpinner? = null
 
@@ -68,8 +66,6 @@ class PiSettingsConfigurable : Configurable {
         extraArgsField = JBTextField(settings.extraArgs).apply {
             emptyText.text = "e.g. --no-themes --verbose"
         }
-        autoOpenFilesCheckbox = JCheckBox("Auto-open files modified by Pi", settings.autoOpenFiles)
-        showNotificationsCheckbox = JCheckBox("Show notification when Pi finishes", settings.showNotifications)
         sendShortcutCombo = ComboBox(SEND_SHORTCUTS).apply {
             selectedItem = if (settings.sendWithCtrlEnter) SEND_CTRL_ENTER else SEND_ENTER
             preferredSize = java.awt.Dimension(400, preferredSize.height)
@@ -117,8 +113,6 @@ class PiSettingsConfigurable : Configurable {
                 font = font.deriveFont(java.awt.Font.BOLD)
                 border = JBUI.Borders.emptyTop(4)
             })
-            .addComponent(autoOpenFilesCheckbox!!, 1)
-            .addComponent(showNotificationsCheckbox!!, 1)
             .addLabeledComponent(JBLabel("Send shortcut:"), sendShortcutCombo!!, 1, false)
             .addComponentToRightColumn(JBLabel("Ctrl+Enter avoids IME Enter confirming a candidate and sending by mistake.").apply {
                 foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
@@ -143,8 +137,6 @@ class PiSettingsConfigurable : Configurable {
                 customModelField?.text != settings.customModelId ||
                 thinkingLevelCombo?.selectedItem != settings.thinkingLevel ||
                 extraArgsField?.text != settings.extraArgs ||
-                autoOpenFilesCheckbox?.isSelected != settings.autoOpenFiles ||
-                showNotificationsCheckbox?.isSelected != settings.showNotifications ||
                 (sendShortcutCombo?.selectedItem == SEND_CTRL_ENTER) != settings.sendWithCtrlEnter ||
                 fontSizeValue() != settings.conversationFontSize
     }
@@ -156,8 +148,6 @@ class PiSettingsConfigurable : Configurable {
         state.customModelId = customModelField?.text ?: ""
         state.thinkingLevel = thinkingLevelCombo?.selectedItem as? String ?: "Default"
         state.extraArgs = extraArgsField?.text ?: ""
-        state.autoOpenFiles = autoOpenFilesCheckbox?.isSelected == true
-        state.showNotifications = showNotificationsCheckbox?.isSelected == true
         state.sendWithCtrlEnter = sendShortcutCombo?.selectedItem == SEND_CTRL_ENTER
         state.conversationFontSize = fontSizeValue()
         PiSettings.getInstance().notifyChanged()
@@ -170,8 +160,6 @@ class PiSettingsConfigurable : Configurable {
         customModelField?.text = settings.customModelId
         thinkingLevelCombo?.selectedItem = settings.thinkingLevel
         extraArgsField?.text = settings.extraArgs
-        autoOpenFilesCheckbox?.isSelected = settings.autoOpenFiles
-        showNotificationsCheckbox?.isSelected = settings.showNotifications
         sendShortcutCombo?.selectedItem = if (settings.sendWithCtrlEnter) SEND_CTRL_ENTER else SEND_ENTER
         conversationFontSizeSpinner?.value = settings.conversationFontSize.coerceIn(
             PiSettings.MIN_FONT_SIZE,

@@ -10,8 +10,6 @@
 - **一键启动** — 点击工具栏 π 按钮启动 Pi
 - **终端集成** — Pi 作为 IDE Terminal 窗口的一个 tab（和 Local 并列）
 - **发送选区** — 选中代码 → 右键 → "Send to Pi"，自动插入 `@path/file.go#L10-25` 到 Pi 输入框
-- **自动打开文件** — Pi 修改的文件自动在编辑器中打开
-- **完成通知** — Pi 处理完成后弹出通知
 - **模型配置** — 从 `~/.pi/agent/models.json` 加载模型列表
 
 ## 快捷键
@@ -37,8 +35,8 @@
 - **Thinking level** — Default / none / low / medium / high / max
 - **Pi command** — pi 二进制路径
 - **Extra arguments** — 额外 CLI 参数
-- **Auto-open files** — 是否自动打开修改的文件
-- **Notifications** — 是否显示完成通知
+- **Send shortcut** — Ctrl+Enter 或 Enter
+- **Conversation font size** — 只改字号，字体跟随 Editor → Font
 
 ## 支持的 IDE
 

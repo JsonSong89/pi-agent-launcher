@@ -2,24 +2,35 @@ package com.piagent.launcher.conversations
 
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.wm.ToolWindowManager
 import com.piagent.launcher.services.PiStatusWidget
 import com.piagent.launcher.services.PiTerminalService
+import com.piagent.launcher.settings.PiSettings
+import java.nio.file.Paths
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.LinkedHashMap
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Project-level conversation map. One conversation <-> one Pi terminal.
- * Switching never kills other sessions; delete closes the terminal and drops history.
+ * Conversations are persisted via [PiConversationStore]; pi's own session
+ * jsonl files stay authoritative for conversation data. Deleting a
+ * conversation never deletes pi-side files.
  */
 @Service(Service.Level.PROJECT)
 class PiConversationService(private val project: Project) {
+
+    private val logger = Logger.getInstance(PiConversationService::class.java)
 
     fun interface Listener {
         fun onChanged(event: ChangeEvent)
@@ -28,7 +39,8 @@ class PiConversationService(private val project: Project) {
     enum class ChangeKind {
         STRUCTURE,
         DRAFT_APPENDED,
-        SENT
+        SENT,
+        STATE
     }
 
     data class ChangeEvent(
@@ -38,11 +50,16 @@ class PiConversationService(private val project: Project) {
 
     private val conversations = LinkedHashMap<String, PiConversation>()
     private val listeners = CopyOnWriteArrayList<Listener>()
-    private val titleSeq = AtomicInteger(1)
     @Volatile
     private var activeId: String? = null
+    /** Agent working state per conversation id (bridge agent_state). */
+    private val workingIds = mutableSetOf<String>()
+    @Volatile
+    private var currentModel: String? = null
 
     init {
+        loadFromStore()
+
         val terminal = terminal()
         terminal.addListener(object : PiTerminalService.SessionListener {
             override fun onSessionEnded(conversationId: String) {
@@ -56,19 +73,16 @@ class PiConversationService(private val project: Project) {
             }
         })
         terminal.onRestartRequested = { conversationId, tabName ->
-            if (get(conversationId) != null) {
-                terminal.launch(conversationId, tabName)
+            val conversation = get(conversationId)
+            if (conversation != null) {
+                terminal.launch(conversationId, tabName, conversation.piSessionId, conversation.title)
             }
         }
     }
 
-    fun addListener(listener: Listener) {
-        listeners.add(listener)
-    }
+    fun addListener(listener: Listener) { listeners.add(listener) }
 
-    fun removeListener(listener: Listener) {
-        listeners.remove(listener)
-    }
+    fun removeListener(listener: Listener) { listeners.remove(listener) }
 
     fun all(): List<PiConversation> = synchronized(conversations) { conversations.values.toList() }
 
@@ -78,8 +92,12 @@ class PiConversationService(private val project: Project) {
 
     fun get(id: String): PiConversation? = synchronized(conversations) { conversations[id] }
 
+    fun isAgentWorking(id: String): Boolean = synchronized(workingIds) { id in workingIds }
+
+    fun currentModel(): String? = currentModel
+
     fun createConversation(): PiConversation {
-        val n = titleSeq.getAndIncrement()
+        val n = store().nextTitleSeq()
         val title = "Pi-$n-${LocalDateTime.now().format(TITLE_TIME_FORMAT)}"
         val conversation = PiConversation(
             id = UUID.randomUUID().toString(),
@@ -90,14 +108,19 @@ class PiConversationService(private val project: Project) {
             conversations[conversation.id] = conversation
             activeId = conversation.id
         }
-        terminal().launch(conversation.id, conversation.tabName)
+        persist()
+        terminal().launch(conversation.id, conversation.tabName, conversation.piSessionId, conversation.title)
         PiStatusWidget.update(project)
         notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, conversation.id))
         return conversation
     }
 
+    /**
+     * With persistence, prefer restoring an existing conversation over
+     * creating a new one on IDE startup.
+     */
     fun ensureActiveConversation(): PiConversation {
-        return active() ?: createConversation()
+        return active() ?: all().lastOrNull() ?: createConversation()
     }
 
     fun setActive(id: String) {
@@ -106,6 +129,7 @@ class PiConversationService(private val project: Project) {
             activeId = id
             conversations[id]
         } ?: return
+        persist()
         terminal().selectTab(conversation.id, requestFocus = false)
         notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
     }
@@ -116,25 +140,37 @@ class PiConversationService(private val project: Project) {
             if (activeId == id) {
                 activeId = conversations.keys.lastOrNull()
             }
+            synchronized(workingIds) { workingIds.remove(id) }
             conversation
         }
+        persist()
         terminal().close(removed.id)
         active()?.let { terminal().selectTab(it.id, requestFocus = false) }
         PiStatusWidget.update(project)
         notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, activeId))
     }
 
-    fun rename(id: String, newTitle: String) {
-        val conversation = get(id) ?: return
+    /** Titles must stay unique; returns false and warns when the name is taken. */
+    fun rename(id: String, newTitle: String): Boolean {
+        val conversation = get(id) ?: return false
         val trimmed = newTitle.trim()
-        if (trimmed.isEmpty() || trimmed == conversation.title) return
+        if (trimmed.isEmpty() || trimmed == conversation.title) return false
+        val duplicate = all().any { it.id != id && it.title == trimmed }
+        if (duplicate) {
+            showNotification("A conversation named \"$trimmed\" already exists.", NotificationType.WARNING)
+            return false
+        }
         conversation.title = trimmed
+        persist()
         notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
+        return true
     }
 
     fun updateDraft(id: String, draft: String) {
         val conversation = get(id) ?: return
+        if (conversation.draft == draft) return
         conversation.draft = draft
+        persist()
     }
 
     fun appendToDraft(text: String, block: Boolean = false) {
@@ -142,6 +178,7 @@ class PiConversationService(private val project: Project) {
         // Upsert same-path @file refs first; trailing newline is only a typing aid.
         val next = upsertFileRefs(conversation.draft, text) ?: mergeDraft(conversation.draft, text, block)
         conversation.draft = if (next.endsWith("\n")) next else next + "\n"
+        persist()
         showToolWindow(focus = true)
         notifyListeners(ChangeEvent(ChangeKind.DRAFT_APPENDED, conversation.id))
     }
@@ -149,8 +186,146 @@ class PiConversationService(private val project: Project) {
     fun appendWorkspaceFiles(paths: List<String>) {
         val conversation = ensureActiveConversation()
         conversation.draft = replaceWorkspaceBlock(conversation.draft, formatWorkspaceBlock(paths))
+        persist()
         showToolWindow(focus = true)
         notifyListeners(ChangeEvent(ChangeKind.DRAFT_APPENDED, conversation.id))
+    }
+
+    fun sendDraft(): Boolean {
+        val conversation = active() ?: return false
+        val text = conversation.draft.trim()
+        if (text.isEmpty()) return false
+
+        if (!terminal().isAlive(conversation.id)) {
+            terminal().launch(conversation.id, conversation.tabName, conversation.piSessionId, conversation.title)
+            showNotification(
+                "Pi terminal was restarted for ${conversation.title}. Send again after Pi is ready.",
+                NotificationType.WARNING
+            )
+            notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, conversation.id))
+            return false
+        }
+
+        terminal().sendText(conversation.id, text)
+        conversation.messages.add(PiUserMessage(text))
+        conversation.draft = ""
+        persist()
+        terminal().selectTab(conversation.id, requestFocus = false)
+        notifyListeners(ChangeEvent(ChangeKind.SENT, conversation.id))
+        return true
+    }
+
+    fun isTerminalAlive(id: String): Boolean = terminal().isAlive(id)
+
+    fun focusTerminal(id: String) {
+        val conversation = get(id) ?: return
+        if (!terminal().isAlive(id)) {
+            showNotification("${conversation.title} terminal is closed.", NotificationType.WARNING)
+            notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
+            return
+        }
+        terminal().selectTab(id, requestFocus = true)
+    }
+
+    fun checkTerminal(id: String): Boolean {
+        val conversation = get(id) ?: return false
+        val alive = terminal().isAlive(id)
+        val status = if (alive) "running" else "closed"
+        showNotification("${conversation.title} terminal is $status.", NotificationType.INFORMATION)
+        notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
+        return alive
+    }
+
+    fun showToolWindow(focus: Boolean = true) {
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
+        if (focus) {
+            toolWindow.activate(null)
+        } else {
+            toolWindow.show()
+        }
+    }
+
+    // ---- Bridge event handlers (called from PiBridgeServer threads) ----
+
+    /** /new, /fork, /clone or /resume switched the session inside the terminal. */
+    fun onBridgeSessionChanged(tabKey: String, sessionId: String) {
+        val conversation = get(tabKey) ?: run {
+            logger.info("Bridge session_changed for unknown tab $tabKey; dropping")
+            return
+        }
+        if (conversation.piSessionId == sessionId) return
+        // Rebind: same tab, new pi session. The old session file stays on disk.
+        conversation.piSessionId = sessionId
+        persist()
+        logger.info("Rebound conversation ${conversation.id} to pi session $sessionId")
+        notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, conversation.id))
+    }
+
+    fun onBridgeSessionStopped(tabKey: String) {
+        notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, tabKey))
+        PiStatusWidget.update(project)
+    }
+
+    fun onBridgeAgentState(tabKey: String, state: String) {
+        val conversation = get(tabKey) ?: return
+        val working = state == "working"
+        synchronized(workingIds) {
+            if (working) workingIds.add(tabKey) else workingIds.remove(tabKey)
+        }
+        notifyListeners(ChangeEvent(ChangeKind.STATE, tabKey))
+        if (!working && PiSettings.getInstance().state.notifyOnAgentEnd) {
+            showNotification("${conversation.title} finished.", NotificationType.INFORMATION)
+        }
+    }
+
+    fun onBridgeModelChanged(tabKey: String, modelId: String) {
+        currentModel = modelId
+        notifyListeners(ChangeEvent(ChangeKind.STATE, tabKey))
+    }
+
+    /** Pi edited a file; optionally refresh + open it in the editor. */
+    fun onBridgeFileModified(tabKey: String, path: String) {
+        if (!PiSettings.getInstance().state.openModifiedFiles) return
+        val app = ApplicationManager.getApplication()
+        app.invokeLater {
+            app.runWriteAction {
+                try {
+                    val file = VirtualFileManager.getInstance().refreshAndFindFileByNioPath(Paths.get(path))
+                    if (file != null && file.isValid) {
+                        FileEditorManager.getInstance(project).openFile(file, false)
+                    }
+                } catch (e: Exception) {
+                    logger.warn("Failed to open modified file $path: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ---- internals ----
+
+    private fun loadFromStore() {
+        val stored = store().snapshot()
+        synchronized(conversations) {
+            for (s in stored) {
+                conversations[s.id] = PiConversation(
+                    id = s.id,
+                    title = s.title,
+                    tabName = s.tabName,
+                    piSessionId = s.piSessionId,
+                    createdAt = s.createdAt,
+                    messages = s.messages.toMutableList(),
+                    draft = s.draft
+                )
+            }
+            activeId = store().activeId()?.takeIf { conversations.containsKey(it) }
+                ?: conversations.keys.lastOrNull()
+        }
+        // Terminals are not auto-revived; the user clicks a conversation to
+        // relaunch (`pi --session`).
+    }
+
+    private fun persist() {
+        store().save(all(), activeId)
     }
 
     private fun mergeDraft(draft: String, text: String, block: Boolean): String {
@@ -209,60 +384,9 @@ class PiConversationService(private val project: Project) {
         }
     }
 
-    fun sendDraft(): Boolean {
-        val conversation = active() ?: return false
-        val text = conversation.draft.trim()
-        if (text.isEmpty()) return false
-
-        if (!terminal().isAlive(conversation.id)) {
-            terminal().launch(conversation.id, conversation.tabName)
-            showNotification(
-                "Pi terminal was restarted for ${conversation.title}. Send again after Pi is ready.",
-                NotificationType.WARNING
-            )
-            notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, conversation.id))
-            return false
-        }
-
-        terminal().sendText(conversation.id, text)
-        conversation.messages.add(PiUserMessage(text))
-        conversation.draft = ""
-        terminal().selectTab(conversation.id, requestFocus = false)
-        notifyListeners(ChangeEvent(ChangeKind.SENT, conversation.id))
-        return true
-    }
-
-    fun isTerminalAlive(id: String): Boolean = terminal().isAlive(id)
-
-    fun focusTerminal(id: String) {
-        val conversation = get(id) ?: return
-        if (!terminal().isAlive(id)) {
-            showNotification("${conversation.title} terminal is closed.", NotificationType.WARNING)
-            notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
-            return
-        }
-        terminal().selectTab(id, requestFocus = true)
-    }
-
-    fun checkTerminal(id: String): Boolean {
-        val conversation = get(id) ?: return false
-        val alive = terminal().isAlive(id)
-        val status = if (alive) "running" else "closed"
-        showNotification("${conversation.title} terminal is $status.", NotificationType.INFORMATION)
-        notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
-        return alive
-    }
-
-    fun showToolWindow(focus: Boolean = true) {
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
-        if (focus) {
-            toolWindow.activate(null)
-        } else {
-            toolWindow.show()
-        }
-    }
-
     private fun terminal(): PiTerminalService = PiTerminalService.getInstance(project)
+
+    private fun store(): PiConversationStore = PiConversationStore.getInstance(project)
 
     private fun notifyListeners(event: ChangeEvent) {
         listeners.forEach { it.onChanged(event) }

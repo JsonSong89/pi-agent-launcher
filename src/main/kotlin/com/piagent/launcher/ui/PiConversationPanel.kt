@@ -113,9 +113,18 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             ): Component {
                 val conversation = value as? PiConversation
                 val label = super.getListCellRendererComponent(list, conversation?.title ?: "No conversations", index, isSelected, cellHasFocus)
-                if (conversation != null && !conversations.isTerminalAlive(conversation.id)) {
-                    foreground = if (isSelected) foreground else JBColor.GRAY
-                    text = "${conversation.title} (closed)"
+                if (conversation != null) {
+                    val alive = conversations.isTerminalAlive(conversation.id)
+                    val working = conversations.isAgentWorking(conversation.id)
+                    val suffix = when {
+                        working -> " ●"
+                        !alive -> " (closed)"
+                        else -> ""
+                    }
+                    text = (conversation?.title ?: "") + suffix
+                    if (conversation != null && !alive && !working && !isSelected) {
+                        foreground = JBColor.GRAY
+                    }
                 }
                 return label
             }
@@ -284,9 +293,12 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             }
 
             val alive = active != null && conversations.isTerminalAlive(active.id)
+            val working = active != null && conversations.isAgentWorking(active.id)
+            val currentModel = conversations.currentModel()
             statusLabel.text = when {
                 active == null -> "No active conversation"
-                alive -> "${active.title} · terminal running"
+                working -> "${active.title} · agent working${currentModel?.let { " · $it" } ?: ""}"
+                alive -> "${active.title} · terminal running${currentModel?.let { " · $it" } ?: ""}"
                 else -> "${active.title} · terminal closed"
             }
             val hasActive = active != null
@@ -378,6 +390,7 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
                 null
             )?.trim() ?: return
             if (newTitle.isEmpty()) return
+            // Uniqueness enforced by the service; it warns on duplicates.
             conversations.rename(active.id, newTitle)
         }
 

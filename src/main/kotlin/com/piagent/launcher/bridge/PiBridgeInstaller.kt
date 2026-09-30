@@ -1,0 +1,134 @@
+package com.piagent.launcher.bridge
+
+import com.intellij.openapi.diagnostic.Logger
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+
+/**
+ * Installs/updates the pi-side bridge extension at
+ * ~/.pi/agent/extensions/pi-launcher-bridge.ts.
+ *
+ * The file is managed by this plugin: only this single file is written,
+ * other files in that directory (user extensions, herdr, ...) are untouched.
+ * The extension is env-gated: without PI_LAUNCHER_PORT/TOKEN/TAB_KEY it does
+ * nothing, so pi instances not launched by the plugin are unaffected.
+ */
+object PiBridgeInstaller {
+
+    private val logger = Logger.getInstance(PiBridgeInstaller::class.java)
+
+    private const val VERSION = 1
+
+    // language=TypeScript
+    private val SOURCE = """
+// Managed by pi-agent-launcher (JetBrains plugin). Do not edit; the plugin rewrites this file.
+// Env-gated: active only when pi is launched by the plugin (PI_LAUNCHER_PORT/TOKEN/TAB_KEY).
+const PORT = Number(process.env.PI_LAUNCHER_PORT);
+const TOKEN = process.env.PI_LAUNCHER_TOKEN;
+const TAB_KEY = process.env.PI_LAUNCHER_TAB_KEY;
+const VERSION = $VERSION;
+
+let seq = Date.now() * 1000;
+let sessionId;
+
+function enabled() {
+  return !!PORT && !!TOKEN && !!TAB_KEY;
+}
+
+function send(type, data) {
+  if (!enabled()) return;
+  try {
+    const net = require("node:net");
+    const payload = JSON.stringify({ v: 1, seq: seq++, type, tabKey: TAB_KEY, token: TOKEN, data }) + "\n";
+    const socket = net.connect(PORT, "127.0.0.1");
+    socket.on("error", () => {});
+    socket.on("connect", () => {
+      socket.write(payload);
+      socket.end();
+    });
+  } catch (_e) {
+    // bridge is best-effort; never break pi
+  }
+}
+
+function refreshSessionId(ctx) {
+  try {
+    const id = ctx?.sessionManager?.getSessionId?.();
+    if (typeof id === "string" && id.length > 0) sessionId = id;
+  } catch (_e) {}
+}
+
+function reportSessionChanged(ctx) {
+  refreshSessionId(ctx);
+  if (sessionId) send("session_changed", { sessionId });
+}
+
+export default function (pi) {
+  if (!enabled()) return;
+
+  pi.on("session_start", (_event, ctx) => {
+    reportSessionChanged(ctx);
+  });
+
+  pi.on("session_shutdown", (_event, ctx) => {
+    refreshSessionId(ctx);
+    if (sessionId) send("session_stopped", {});
+  });
+
+  pi.on("agent_start", (_event, _ctx) => {
+    send("agent_state", { state: "working" });
+  });
+
+  pi.on("agent_settled", (event, _ctx) => {
+    const data = { state: "idle" };
+    try {
+      const reason = event?.data?.stopReason ?? event?.stopReason;
+      if (reason) data.stopReason = String(reason);
+    } catch (_e) {}
+    send("agent_state", data);
+  });
+
+  pi.on("model_select", (event, _ctx) => {
+    try {
+      const modelId = event?.data?.modelId ?? event?.modelId;
+      if (modelId) send("model_changed", { modelId: String(modelId) });
+    } catch (_e) {}
+  });
+
+  pi.on("tool_call", (event, _ctx) => {
+    try {
+      const tool = event?.data?.tool ?? event?.tool;
+      const args = event?.data?.args ?? event?.args;
+      if (tool && /edit|write|patch/i.test(String(tool))) {
+        const path = args?.filePath ?? args?.file_path ?? args?.path;
+        if (path) send("file_modified", { path: String(path) });
+      }
+    } catch (_e) {}
+  });
+}
+""".trim() + "\n"
+
+    fun extensionPath(): Path =
+        Paths.get(System.getProperty("user.home"), ".pi", "agent", "extensions", "pi-launcher-bridge.ts")
+
+    /** Ensures the extension file exists and is current. Best-effort. */
+    fun ensureInstalled() {
+        try {
+            val path = extensionPath()
+            if (Files.exists(path) && isCurrent(path)) return
+            Files.createDirectories(path.parent)
+            Files.writeString(path, SOURCE)
+            logger.info("Installed pi bridge extension at $path (v$VERSION)")
+        } catch (e: Exception) {
+            logger.warn("Failed to install pi bridge extension: ${e.message}")
+        }
+    }
+
+    private fun isCurrent(path: Path): Boolean = try {
+        val text = Files.readString(path)
+        text.contains("const VERSION = $VERSION;")
+    } catch (_: Exception) {
+        false
+    }
+}

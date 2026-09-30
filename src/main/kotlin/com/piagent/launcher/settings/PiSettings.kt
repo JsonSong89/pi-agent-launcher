@@ -32,6 +32,8 @@ class PiSettings : PersistentStateComponent<PiSettings.State> {
         var conversationFontSize: Int = DEFAULT_FONT_SIZE
         // Align with Java/XML boolean default (false) so unchecked values persist.
         var sendWithCtrlEnter: Boolean = false
+        var notifyOnAgentEnd: Boolean = false
+        var openModifiedFiles: Boolean = false
     }
 
     private var myState = State()

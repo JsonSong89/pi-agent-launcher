@@ -13,7 +13,13 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
+import com.piagent.launcher.bridge.PiBridgeInstaller
+import com.piagent.launcher.bridge.PiBridgeServer
 import com.piagent.launcher.settings.PiSettings
+import com.intellij.openapi.util.SystemInfo
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import javax.swing.JComponent
@@ -53,7 +59,7 @@ class PiTerminalService(private val project: Project) : Disposable {
         listeners.add(listener)
     }
 
-    fun launch(conversationId: String, tabName: String) {
+    fun launch(conversationId: String, tabName: String, piSessionId: String, title: String) {
         val existing = sessions[conversationId]
         if (existing != null && isTerminalAlive(existing)) {
             selectTab(conversationId, requestFocus = false)
@@ -68,7 +74,7 @@ class PiTerminalService(private val project: Project) : Disposable {
             val workingDir = project.basePath ?: System.getProperty("user.home")
             createTerminalTab(conversationId, tabName, workingDir)
             PiStatusWidget.update(project)
-            startPiWithDelay(conversationId)
+            startPiWithDelay(conversationId, piSessionId, title, workingDir)
         } catch (e: Exception) {
             logger.error("Failed to launch Pi terminal for $tabName", e)
             reset(conversationId, notify = false)
@@ -234,10 +240,42 @@ class PiTerminalService(private val project: Project) : Disposable {
         contentListenerInstalled = true
     }
 
-    private fun startPiWithDelay(conversationId: String) {
+    private fun startPiWithDelay(
+        conversationId: String,
+        piSessionId: String,
+        title: String,
+        workingDir: String
+    ) {
+        PiBridgeInstaller.ensureInstalled()
+        val endpoint = PiBridgeServer.getInstance(project).ensureStarted()
+
         val settings = PiSettings.getInstance().state
+        val resume = sessionFileExists(piSessionId, workingDir)
+        val extraArgs = sanitizeExtraArgs(settings.extraArgs)
+
         val command = buildString {
+            // Env prefix for the bridge extension (PowerShell on Windows, POSIX shell otherwise).
+            if (endpoint != null) {
+                if (SystemInfo.isWindows) {
+                    append("\$env:PI_LAUNCHER_PORT='${endpoint.port}'; ")
+                    append("\$env:PI_LAUNCHER_TOKEN='${endpoint.token}'; ")
+                    append("\$env:PI_LAUNCHER_TAB_KEY='$conversationId'; ")
+                } else {
+                    append("PI_LAUNCHER_PORT=${endpoint.port} ")
+                    append("PI_LAUNCHER_TOKEN='${endpoint.token}' ")
+                    append("PI_LAUNCHER_TAB_KEY='$conversationId' ")
+                }
+            }
+
             append(settings.piCommand)
+
+            if (resume) {
+                append(" --session ${quote(piSessionId)}")
+            } else {
+                append(" --session-id ${quote(piSessionId)}")
+            }
+            append(" --name ${quote(title)}")
+            append(" --session-dir ${quote(sessionDir().toString())}")
 
             val model = if (settings.customModelId.isNotBlank()) {
                 settings.customModelId
@@ -246,16 +284,18 @@ class PiTerminalService(private val project: Project) : Disposable {
             } else null
 
             if (model != null) {
-                append(" --model $model")
+                append(" --model ")
+                append(quote(model))
             }
 
             if (settings.thinkingLevel != "Default" && settings.thinkingLevel.isNotBlank()) {
-                append(" --thinking ${settings.thinkingLevel}")
+                append(" --thinking ")
+                append(quote(settings.thinkingLevel))
             }
 
-            if (settings.extraArgs.isNotBlank()) {
+            if (extraArgs.isNotBlank()) {
                 append(" ")
-                append(settings.extraArgs)
+                append(extraArgs)
             }
         }
 
@@ -337,7 +377,7 @@ class PiTerminalService(private val project: Project) : Disposable {
                 if (handler != null) {
                     handler(conversationId, tabName)
                 } else {
-                    launch(conversationId, tabName)
+                    logger.warn("No restart handler for $tabName")
                 }
             }
         })
@@ -372,5 +412,56 @@ class PiTerminalService(private val project: Project) : Disposable {
 
     companion object {
         fun getInstance(project: Project): PiTerminalService = project.service()
+
+        /** Pi session storage the plugin pins via --session-dir. */
+        fun sessionDir(): Path =
+            Paths.get(System.getProperty("user.home"), ".pi", "agent", "sessions")
+
+        /** Mirrors pi's cwd → directory mapping: strip leading separator, /, \, : become '-'. */
+        private fun sessionDirFor(cwd: String): Path {
+            val cleaned = cwd.trimStart('/', '\\').replace('/', '-').replace('\\', '-').replace(':', '-')
+            return sessionDir().resolve("--$cleaned--")
+        }
+
+        private fun sessionFileExists(piSessionId: String, cwd: String): Boolean = try {
+            val dir = sessionDirFor(cwd)
+            Files.isDirectory(dir) && Files.list(dir).use { stream ->
+                stream.anyMatch { it.fileName.toString().endsWith("_${piSessionId}.jsonl") }
+            }
+        } catch (_: Exception) {
+            false
+        }
+
+        /** Drops flags that would conflict with our --session-id/--session injection. */
+        private fun sanitizeExtraArgs(extraArgs: String): String {
+            if (extraArgs.isBlank()) return ""
+            val valueFlags = setOf("--session", "--session-id", "--fork")
+            val keep = mutableListOf<String>()
+            val tokens = extraArgs.trim().split(Regex("\\s+")).toMutableList()
+            var skipNext = false
+            for (token in tokens) {
+                if (skipNext) {
+                    skipNext = false
+                    continue
+                }
+                if (token in CONFLICT_FLAGS) {
+                    skipNext = token in valueFlags
+                    continue
+                }
+                keep.add(token)
+            }
+            return keep.joinToString(" ")
+        }
+
+        private val CONFLICT_FLAGS = setOf("--continue", "--resume", "--session", "--session-id", "--fork")
+
+        private fun quote(value: String): String {
+            val escaped = if (SystemInfo.isWindows) {
+                value.replace("'", "''")
+            } else {
+                value.replace("'", "'\\''")
+            }
+            return "'$escaped'"
+        }
     }
 }

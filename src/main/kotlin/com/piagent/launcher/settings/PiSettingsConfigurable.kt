@@ -21,6 +21,8 @@ class PiSettingsConfigurable : Configurable {
     private var extraArgsField: JBTextField? = null
     private var sendShortcutCombo: ComboBox<String>? = null
     private var conversationFontSizeSpinner: JSpinner? = null
+    private var notifyAgentEndCheck: JCheckBox? = null
+    private var openModifiedFilesCheck: JCheckBox? = null
 
     companion object {
         const val SEND_CTRL_ENTER = "Ctrl+Enter"
@@ -78,6 +80,8 @@ class PiSettingsConfigurable : Configurable {
                 1
             )
         )
+        notifyAgentEndCheck = JCheckBox("Notify when the agent finishes", settings.notifyOnAgentEnd)
+        openModifiedFilesCheck = JCheckBox("Open files modified by Pi in the editor", settings.openModifiedFiles)
 
         panel = FormBuilder.createFormBuilder()
             // Model section
@@ -123,6 +127,8 @@ class PiSettingsConfigurable : Configurable {
                 foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
                 font = JBUI.Fonts.smallFont()
             }, 0)
+            .addComponent(notifyAgentEndCheck!!)
+            .addComponent(openModifiedFilesCheck!!)
 
             .addComponentFillVertically(JPanel(), 0)
             .panel
@@ -138,7 +144,9 @@ class PiSettingsConfigurable : Configurable {
                 thinkingLevelCombo?.selectedItem != settings.thinkingLevel ||
                 extraArgsField?.text != settings.extraArgs ||
                 (sendShortcutCombo?.selectedItem == SEND_CTRL_ENTER) != settings.sendWithCtrlEnter ||
-                fontSizeValue() != settings.conversationFontSize
+                fontSizeValue() != settings.conversationFontSize ||
+                notifyAgentEndCheck?.isSelected != settings.notifyOnAgentEnd ||
+                openModifiedFilesCheck?.isSelected != settings.openModifiedFiles
     }
 
     override fun apply() {
@@ -150,6 +158,8 @@ class PiSettingsConfigurable : Configurable {
         state.extraArgs = extraArgsField?.text ?: ""
         state.sendWithCtrlEnter = sendShortcutCombo?.selectedItem == SEND_CTRL_ENTER
         state.conversationFontSize = fontSizeValue()
+        state.notifyOnAgentEnd = notifyAgentEndCheck?.isSelected == true
+        state.openModifiedFiles = openModifiedFilesCheck?.isSelected == true
         PiSettings.getInstance().notifyChanged()
     }
 
@@ -165,6 +175,8 @@ class PiSettingsConfigurable : Configurable {
             PiSettings.MIN_FONT_SIZE,
             PiSettings.MAX_FONT_SIZE
         )
+        notifyAgentEndCheck?.isSelected = settings.notifyOnAgentEnd
+        openModifiedFilesCheck?.isSelected = settings.openModifiedFiles
     }
 
     private fun fontSizeValue(): Int {

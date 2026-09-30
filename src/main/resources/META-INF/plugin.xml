@@ -68,6 +68,8 @@
     <extensions defaultExtensionNs="com.intellij">
         <projectService serviceImplementation="com.piagent.launcher.services.PiTerminalService"/>
         <projectService serviceImplementation="com.piagent.launcher.conversations.PiConversationService"/>
+        <projectService serviceImplementation="com.piagent.launcher.conversations.PiConversationStore"/>
+        <projectService serviceImplementation="com.piagent.launcher.bridge.PiBridgeServer"/>
 
         <toolWindow id="Pi Agent"
                     anchor="right"

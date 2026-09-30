@@ -1,13 +1,17 @@
 package com.piagent.launcher.conversations
 
 /**
- * In-memory conversation bound to one Pi terminal tab.
- * Not persisted across IDE restarts.
+ * A conversation bound to one Pi terminal tab.
+ *
+ * [id] is the stable plugin-side primary key (also the bridge tabKey).
+ * [piSessionId] is the currently bound pi session id; it changes when the
+ * user runs /new, /fork or /resume inside the terminal (bridge rebinds it).
  */
 class PiConversation(
     val id: String,
     var title: String,
     val tabName: String,
+    var piSessionId: String = id,
     val createdAt: Long = System.currentTimeMillis(),
     val messages: MutableList<PiUserMessage> = mutableListOf(),
     var draft: String = ""

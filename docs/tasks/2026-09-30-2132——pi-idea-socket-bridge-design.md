@@ -1,0 +1,141 @@
+# Pi ↔ IDEA Socket 通道设计
+
+## 背景
+
+插件当前在 IDEA 右侧临时维护会话列表，重启即丢。持久化方案已对齐（见决策记录）：
+
+- 会话 id 由插件生成，启动 pi 时通过 `--session-id` 注入，`PiConversation.id` 即 pi sessionId
+- 启动时附带 `--name <title>`；title 以插件侧存储为权威，单向同步（插件 → pi）
+- IDEA 重启后按需 `pi --session <id>` 恢复
+- 索引存 PersistentStateComponent（project 级），pi 的 jsonl 是会话数据权威
+- 插件侧删除条目不联动删除 pi 会话文件
+
+但"只管好启动参数"有固有盲区：用户在 terminal 里 `/new`、`/fork`、`/clone`、`/resume` 会在 pi 进程内部产生新的 sessionId，tab 与插件条目脱钩，且 socket 失联/IDEA 重启后会接回旧会话。因此需要一条**运行期回报通道**。
+
+## 通道选型结论
+
+**socket 为主通道，session 目录扫描只做重启/重连后的对账兜底**（不做运行期 watch）。
+
+传输层实现决策（实现期细化）：**loopback TCP（`127.0.0.1` 随机端口 + 每实例随机 token）**，而非 unix socket / Windows named pipe 双实现。理由：JetBrains 侧 named pipe 需要额外传输层依赖、AF_UNIX 走相对少用的 Netty API，双实现成本远超收益；TCP 一套代码同时覆盖 Windows 与 Linux（**Windows 优先验证，Linux 同步支持**）。安全对冲：token 校验拒绝非本插件启动的连接/消息。
+
+| 能力 | socket | 文件 watch |
+|---|---|---|
+| session 变更实时上报 | ✅ | ⚠️ 凑合（靠落盘副作用） |
+| 运行期状态（working/idle）推送 | ✅ | ❌ 不落盘 |
+| 双向命令（IDEA → pi） | ✅ | ❌ |
+| 失联自愈 | ❌ 需兜底 | ✅ 状态在磁盘上 |
+
+定位：socket 传的是**事件**（会丢），文件系统是**状态**（不会丢）。事件流负责实时性，对账负责正确性。
+
+## 一、借鉴 herdr 的点
+
+参考实现：`~/.pi/agent/extensions/herdr-agent-state.ts`（herdr 集成 pi 的方式，模式成熟）。
+
+1. **env 注入约定**：启动 pi 前注入 env（`PI_LAUNCHER_PORT`、`PI_LAUNCHER_TOKEN`、`PI_LAUNCHER_TAB_KEY`），extension 在 pi 进程内读取。实现方式为启动命令前缀：Windows（默认 PowerShell）`$env:VAR='..'; ` 逐个赋值；POSIX `VAR=.. VAR=.. pi ..` 内联前缀。启动时约定，无需运行期发现机制。
+2. **per-request connect，无长连接**：每条消息独立 `net.createConnection` → write → destroy，带超时降级。绕开"IDEA 重启后旧 socket 失效导致 pi 侧死连接"的生命周期坑。herdr 一次失败后 1500ms 重试一次再放弃。
+3. **env 门控**：非本插件启动的 pi 进程（用户手跑的）env 不存在，extension 全部行为短路，零副作用。
+4. **sessionId 获取方式**：`ctx.sessionManager.getSessionId()` / `getSessionFile()`，在 `session_start` 等事件里刷新缓存。
+5. **跨平台写法**：Linux unix socket，Windows named pipe（`\\\\.\\pipe\\<name>`），`node:net` 两者统一覆盖。
+
+**不抄的点**：herdr 的协议是为其 pane 管理特化的（`pane.report_agent_session` 等）。我们做通用信封。
+
+## 二、协议：通用信封
+
+```jsonc
+// pi → IDEA（上报）
+{ "v": 1, "seq": 1024, "type": "session_changed", "tabKey": "<conversationId>", "token": "...", "data": { "sessionId": "..." } }
+
+// IDEA → pi（命令，请求-响应，后期）
+{ "v": 1, "seq": 88, "type": "cmd_set_session_name", "tabKey": "<conversationId>", "data": { "name": "..." } }
+```
+
+兼容性语义（关键约定，不是形式主义）：
+
+- **`v` 是主版本号**（v1/v2），仅协议结构变更（字段类型变、语义反转）才 bump；pi/插件自身的 patch 版本不参与比对
+- **未知 `type` 直接丢弃**，不断联不报错——老端收到新功能消息只是忽略
+- **已知 type 解析失败**：丢弃 + 日志告警，核心功能（session 上报）不受影响
+- **`seq` 单调递增，且去重按 `tabKey` 分域**（每 tabKey 独立 seq 基线）：消息来自多个 pi 进程，各进程 seq 独立计数，全局去重会误杀；用于乱序/重复丢弃（防旧状态闪回）。未知 type 直接丢弃的规则同前
+- 降级底线：通道完全失联时，退化为现状行为（空 terminal，用户手动 resume），不影响 pi 本身
+
+首期只实现一个 type：`session_changed`。后续加功能只是加 type。
+
+## 三、pi 侧：extension
+
+**分发**：插件安装/更新时向 `~/.pi/agent/extensions/` 写入一个 extension 文件（如 `pi-launcher-bridge.ts`），文件头注明由插件管理、勿手改。注意与 herdr 等同目录管理者共存（只覆盖自己那个文件）。`~/.pi/agent/extensions/` 是用户信任目录，extension 拥有 pi 进程同权限，这是必要的安全知会。
+
+**实现约束**（来自 pi 文档）：
+
+- factory 里**不**启动 socket/watcher/timer（部分加载不伴随 session）；从 `session_start` 起资源，`session_shutdown` 幂等清理
+- extension 跑在 pi 的 Node/Bun 运行时内，直接用 `node:net`
+
+**事件 → 上报映射**：
+
+| pi 事件 | 上报 type | 说明 |
+|---|---|---|
+| `session_start` | `session_changed` | 换绑 tab ↔ sessionId（`/new`、`/fork`、`/clone`、`/resume`、重启后恢复都会走到这） |
+| `session_shutdown` | `session_stopped` | tab 标记 closed |
+| `model_select` | `model_changed` | 侧栏显示当前模型 |
+| `agent_start` | `agent_state: working` | 会话条目状态 |
+| `agent_settled` | `agent_state: idle` + 结束状态 | **`agent_settled` 是"本轮彻底跑完、不会再自动续"的信号**，语义比 `agent_end` 准，通知用它 |
+| `tool_call` / `tool_result` | `tool_activity` | bash 命令、读写文件（用于通知与文件同步，见 §六） |
+| `message_end` | `usage` | token 用量/成本（升级 PiStatusWidget 数据源为推送） |
+
+请求-响应类命令（IDEA → pi）首期不做，协议预留。
+
+## 四、IDEA 侧：listener
+
+- **传输层**：`ServerSocket` 绑定 `127.0.0.1` 随机端口，per-project 实例；accept 循环逐行读 JSON → 信封解析（v/token 校验、按 tabKey 分域 seq 去重、type 分发）→ 按 `tabKey` 路由到 `PiConversationService`；handler 无状态路由，不复用 `active()` 隐式假设
+- **孤儿消息**：`tabKey` 对应 conversation 已被删除 → 丢弃 + 日志，不复活条目
+- **安全**：loopback TCP 本机任何进程可连；每实例随机 token 校验拒绝非法来源，后续敏感命令需升级握手
+
+## 五、对账兜底（socket 的第二条腿）
+
+触发时机：IDEA 启动、socket 重连成功、以及手动 reconcile。
+
+逻辑：扫 `~/.pi/agent/sessions/--<projectPath>--/`（启动时显式注入 `--session-dir ~/.pi/agent/sessions`，让插件与 pi 的目录约定确定，不受用户 `sessionDir`/env 配置漂移影响）：
+
+- v1 范围（存在性对账）：逐条目校验 `*_<piSessionId>.jsonl` 是否存在；不存在（用户在 pi 侧删过）→ 条目降级 closed/标记。同时作为 resume 判定：文件存在 → `--session <piSessionId>`，否则 `--session-id <piSessionId>`
+- v2 范围（mtime 重绑）：失联窗口内出现史断的文件 Y → 修正 tab 绑定。边界（知情即可）：失联窗口内多个会话都被写过时只能取最新，切换轨迹不可还原
+
+## 六、socket 解锁的功能（迭代顺序）
+
+### P0 —— 本次交付
+1. **会话持久化 + `session_changed` 换绑**：解决 `/new` 脱钩。换绑策略：同 tab 换绑新 id，原 id 条目保留为 closed（可查可复活），符合 pi "分支不删"语义。
+2. **agent 结束通知**（曾被砍掉，现回归）：`agent_settled` → IDEA notification，含正常/错误/中止状态。设置项默认关闭（避免打扰），在 Settings 增加 toggle。附带会话条目上 🔄/✅ 状态徽标。
+
+### P1
+3. **pi 修改的文件在 IDEA 中打开**（曾被砍掉，现回归）：`tool_result` 中提取 file-tracking（read/modified files）→ 对 modified 文件触发 `VirtualFileManager.refreshAndFindFileByNio` + 可选打开编辑器。**默认关闭**（Settings toggle），因为会抢焦点/打乱当前编辑布局，由用户显式开启。
+
+### P2
+4. 工作状态/用量推送：`agent_start`/`usage` 升级 `PiStatusWidget` 数据源（轮询 → 推送），token 用量、成本、当前模型。
+5. 双向命令：重命名会话（补齐 name 双向同步）、`/compact`、切模型。
+6. 危险命令确认：`tool_call` bash → IDEA 原生确认对话框 → 回传决定（对齐 pi examples 的 confirm-destructive 模式，UI 移到 IDEA 侧）。
+
+### 已排除
+- 读取"pi 全局有哪些插件"：静态配置，IDEA 侧直接读 `~/.pi/agent/extensions/` 目录即可，不走通道。
+- `pi --mode rpc`：双向 JSONL 更"官方"，但要求放弃 TUI、以 RPC 模式启动，与"terminal 里交互式跑 pi"冲突。
+
+## 七、主要风险清单
+
+| 风险 | 缓解 |
+|---|---|
+| `--session-id` 与用户 extraArgs（`--continue`/`--resume` 等）冲突导致启动失败 | 启动前校验/过滤冲突参数 |
+| `/fork`、`/clone` 产生新 id 造成脱钩 | `session_changed` 换绑 + 目录对账双保险 |
+| socket 生命周期错位（IDEA 重启后 pi 侧路径失效） | per-request connect + 失败静默降级 + 对账自愈 |
+| 全局 extensions 目录与其他管理者冲突/被用户手改 | 只写自己文件 + 文件头声明 + 启动时校验文件存在与内容 hash |
+| 协议版本漂移 | v 主版本 + 未知 type 丢弃 + 解析失败告警 |
+| Windows named pipe 边角（AV 拦截、实现差异） | 传输层接口隔离双实现；首期可 Linux 先行、Windows beta |
+| `--session <id>` 语义依赖 pi 版本 | 文档声明最低 pi 版本要求 |
+
+## 八、决策记录（已对齐）
+
+- ✅ 存储：PersistentStateComponent（方案 A），pi jsonl 为数据权威
+- ✅ 删除：只删插件条目，不动 pi 侧会话文件
+- ✅ id 对齐：`--session-id` 注入，`PiConversation.id` == pi sessionId
+- ✅ 通道：socket 主 + 目录对账兜底，不二选一；传输层 loopback TCP + token（Windows 优先，Linux 同步支持）
+- ✅ id 模型：conversation 存稳定 `id`（tabKey）+ `piSessionId` 两字段，`/new` 换绑只更新后者
+- ✅ rename：**禁止重名**（同项目内 title 唯一）
+- ✅ title 同步：插件 → pi 单向（`--name`），name 双向同步留待 P2 双向命令顺带解决
+- ✅ 恢复语义：不自动复活 terminal，点击时按需 `pi --session <id>`；列表区分 running/closed
+- ✅ `/new` 换绑策略：同 tab 换绑新 id，旧条目保留为 closed
+- ✅ 回归两个被砍功能：agent 结束通知（默认关）、pi 改动文件在 IDEA 打开（默认关），均进 Settings

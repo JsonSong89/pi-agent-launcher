@@ -11,6 +11,10 @@ One-click [Pi coding agent](https://pi.dev) launcher for JetBrains IDEs — open
 
 - **One-click launch** — Click the π button in the toolbar to start Pi
 - **Terminal integration** — Pi runs as a tab inside the IDE's Terminal window (alongside Local)
+- **Persistent conversation manager** — Sessions survive IDE restarts (id/name aligned with pi's own session files); reattach with `pi --session` on demand
+- **Live session binding** — A bridge extension keeps the IDE in sync when you run `/new`, `/fork` or `/resume` inside the terminal
+- **Completion notifications** — Optional balloon when the agent settles (off by default)
+- **Open files modified by Pi** — Optional auto-open/refresh in the editor (off by default)
 - **Send to Pi** — Select code → Right-click → "Send to Pi" inserts `@path/file.go#L10-25` into Pi's input
 - **Model configuration** — Pick model and thinking level from `~/.pi/agent/models.json`
 
@@ -39,6 +43,8 @@ One-click [Pi coding agent](https://pi.dev) launcher for JetBrains IDEs — open
 - **Extra arguments** — Additional CLI flags
 - **Send shortcut** — Ctrl+Enter or Enter
 - **Conversation font size** — Size only; family follows Editor → Font
+- **Notify on agent completion** — Balloon when the agent settles (default off)
+- **Open files modified by Pi** — Auto-open/refresh files Pi edits (default off)
 
 ## Supported IDEs
 
@@ -65,6 +71,13 @@ src/main/kotlin/com/piagent/launcher/
 │   ├── LaunchPiAction.kt          # Toolbar button → launch Pi
 │   ├── OpenPiAction.kt            # Cmd+Esc → focus Pi
 │   └── SendSelectionAction.kt     # Send @file#L reference
+├── bridge/
+│   ├── PiBridgeServer.kt        # Loopback TCP server: events from pi extension
+│   └── PiBridgeInstaller.kt     # Writes ~/.pi/agent/extensions/pi-launcher-bridge.ts
+├── conversations/
+│   ├── PiConversation.kt        # Conversation model (id + piSessionId)
+│   ├── PiConversationStore.kt   # PersistentStateComponent index
+│   └── PiConversationService.kt # Conversation lifecycle + bridge routing
 ├── services/
 │   ├── PiTerminalService.kt       # Terminal lifecycle + send text
 │   └── PiStatusWidget.kt          # Status bar running count

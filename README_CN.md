@@ -9,6 +9,10 @@
 
 - **一键启动** — 点击工具栏 π 按钮启动 Pi
 - **终端集成** — Pi 作为 IDE Terminal 窗口的一个 tab（和 Local 并列）
+- **会话持久化** — 会话列表跨 IDE 重启保留（id/name 与 pi 自身会话文件对齐），点击时按需 `pi --session` 接回
+- **实时会话绑定** — bridge extension 同步 terminal 内 `/new`、`/fork`、`/resume` 造成的会话切换
+- **完成通知** — agent 结束时气泡通知（默认关闭）
+- **打开 Pi 修改的文件** — 自动刷新/打开 Pi 编辑过的文件（默认关闭）
 - **发送选区** — 选中代码 → 右键 → "Send to Pi"，自动插入 `@path/file.go#L10-25` 到 Pi 输入框
 - **模型配置** — 从 `~/.pi/agent/models.json` 加载模型列表
 
@@ -37,6 +41,8 @@
 - **Extra arguments** — 额外 CLI 参数
 - **Send shortcut** — Ctrl+Enter 或 Enter
 - **Conversation font size** — 只改字号，字体跟随 Editor → Font
+- **Notify on agent completion** — agent 结束时气泡通知（默认关闭）
+- **Open files modified by Pi** — 自动刷新/打开 Pi 编辑过的文件（默认关闭）
 
 ## 支持的 IDE
 

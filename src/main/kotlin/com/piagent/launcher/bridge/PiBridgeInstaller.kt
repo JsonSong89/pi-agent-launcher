@@ -131,4 +131,20 @@ export default function (pi) {
     } catch (_: Exception) {
         false
     }
+
+    /** Read-only diagnostics for the settings page: [state, version, path]. */
+    fun diagnostics(): String {
+        val path = extensionPath()
+        return try {
+            if (!Files.exists(path)) {
+                "extension not installed yet — starts automatically with the first Pi terminal"
+            } else {
+                val current = isCurrent(path)
+                val state = if (current) "installed (v$VERSION, up to date)" else "stale — will be rewritten on next Pi launch"
+                "$state · $path"
+            }
+        } catch (e: Exception) {
+            "diagnostics unavailable: ${e.message}"
+        }
+    }
 }

@@ -1,11 +1,13 @@
 package com.piagent.launcher.settings
 
 import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
+import com.piagent.launcher.bridge.PiBridgeInstaller
 import javax.swing.*
 
 /**
@@ -130,6 +132,17 @@ class PiSettingsConfigurable : Configurable {
             .addComponent(notifyAgentEndCheck!!)
             .addComponent(openModifiedFilesCheck!!)
 
+            // Diagnostics (read-only)
+            .addSeparator()
+            .addComponent(JBLabel("Bridge diagnostics").apply {
+                font = font.deriveFont(java.awt.Font.BOLD)
+                border = JBUI.Borders.emptyTop(4)
+            })
+            .addComponent(JBLabel(bridgeStatusText()).apply {
+                foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
+                font = JBUI.Fonts.smallFont()
+            })
+
             .addComponentFillVertically(JPanel(), 0)
             .panel
 
@@ -181,6 +194,15 @@ class PiSettingsConfigurable : Configurable {
 
     private fun fontSizeValue(): Int {
         return (conversationFontSizeSpinner?.value as? Number)?.toInt() ?: PiSettings.DEFAULT_FONT_SIZE
+    }
+
+    private fun bridgeStatusText(): String {
+        val extension = PiBridgeInstaller.diagnostics()
+        val server = ProjectManager.getInstance().openProjects.firstOrNull()
+            ?.let { com.piagent.launcher.bridge.PiBridgeServer.getInstance(it).endpoint() }
+            ?.let { "server listening on 127.0.0.1:${it.port}" }
+            ?: "server not started — starts with the first Pi terminal"
+        return "$extension\n$server"
     }
 
     override fun disposeUIResources() {

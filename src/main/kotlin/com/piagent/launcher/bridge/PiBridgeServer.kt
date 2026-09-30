@@ -60,6 +60,9 @@ class PiBridgeServer(private val project: Project) {
         }
     }
 
+    /** Current endpoint, or null when the server has not been started/failed. */
+    fun endpoint(): Endpoint? = currentEndpoint()
+
     private fun currentEndpoint(): Endpoint? =
         serverSocket?.let { Endpoint(it.localPort, token) }
 

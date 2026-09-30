@@ -2,6 +2,8 @@ package com.piagent.launcher.bridge
 
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
@@ -20,13 +22,19 @@ import java.util.concurrent.atomic.AtomicBoolean
  * (~/.pi/agent/extensions/pi-launcher-bridge.ts).
  *
  * Protocol: one JSON object per line, per-request connections from pi side.
- * Envelope: {v, seq, type, tabKey, token, data}. Unknown types are dropped,
- * seq de-duplication is scoped per tabKey (each pi process counts its own).
- * Security: random per-instance port + token; messages with a wrong token
- * are rejected.
+ * Envelope: {v, seq, type, tabKey, token, data}. Unknown types are dropped.
+ *
+ * De-duplication is scoped per (tabKey, type): each message is an independent
+ * short connection, so delivery order is not guaranteed — a single seq
+ * timeline per tab would drop an earlier session_changed after a later
+ * agent_state arrived first. State messages are idempotent, so per-type
+ * last-write-wins is sufficient.
+ *
+ * Handlers are dispatched on the EDT; conversations state, persistence and
+ * notifications all touch UI-visible components.
  */
 @Service(Service.Level.PROJECT)
-class PiBridgeServer(private val project: Project) {
+class PiBridgeServer(private val project: Project) : Disposable {
 
     private val logger = Logger.getInstance(PiBridgeServer::class.java)
     private val started = AtomicBoolean(false)
@@ -34,7 +42,7 @@ class PiBridgeServer(private val project: Project) {
     @Volatile private var token: String = ""
 
     private val gson = Gson()
-    private val lastSeqByTab = ConcurrentHashMap<String, Long>()
+    private val lastSeqByKey = ConcurrentHashMap<String, Long>()
 
     class Endpoint(val port: Int, val token: String)
 
@@ -74,7 +82,7 @@ class PiBridgeServer(private val project: Project) {
                 handler.isDaemon = true
                 handler.start()
             } catch (_: Exception) {
-                // server closed or transient accept failure
+                // closed socket ends the loop; transient accept failures retry
             }
         }
     }
@@ -83,10 +91,14 @@ class PiBridgeServer(private val project: Project) {
         try {
             client.use { s ->
                 s.soTimeout = 10_000
-                BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8)).useLines { lines ->
-                    for (line in lines) {
-                        if (line.isNotBlank()) handleMessage(line.trim())
+                val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.length > MAX_LINE_LENGTH) {
+                        logger.warn("Pi bridge: dropping oversized line (${line.length} chars)")
+                        continue
                     }
+                    if (line.isNotBlank()) handleMessage(line.trim())
                 }
             }
         } catch (_: Exception) {
@@ -117,28 +129,38 @@ class PiBridgeServer(private val project: Project) {
         val data = envelope.getAsJsonObject("data") ?: gson.toJsonTree(mapOf<String, Any>()).asJsonObject
         val seq = envelope.get("seq")?.takeIf { it.isJsonPrimitive }?.asLong ?: 0L
 
-        // Per-tabKey seq de-dup: each pi process counts independently.
+        // Per (tabKey, type) de-dup: each pi process counts its own seq and
+        // independent connections may reorder, so types never share a timeline.
         if (seq > 0) {
-            val last = lastSeqByTab[tabKey] ?: 0L
+            val key = "$tabKey\u0000$type"
+            val last = lastSeqByKey[key] ?: 0L
             if (seq <= last) return
-            lastSeqByTab[tabKey] = seq
+            lastSeqByKey[key] = seq
         }
 
+        if (project.isDisposed) return
+
+        // Handlers touch UI-visible state (persist + notifications); dispatch on EDT.
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            route(tabKey, type, data)
+        }
+    }
+
+    private fun route(tabKey: String, type: String, data: JsonObject) {
+        val service = PiConversationService.getInstance(project)
         // Orphan routing: handlers drop unknown tabKeys silently.
         when (type) {
             "session_changed" -> str(data, "sessionId")?.let {
-                PiConversationService.getInstance(project).onBridgeSessionChanged(tabKey, it)
+                service.onBridgeSessionChanged(tabKey, it)
             }
-            "session_stopped" ->
-                PiConversationService.getInstance(project).onBridgeSessionStopped(tabKey)
-            "agent_state" -> str(data, "state")?.let {
-                PiConversationService.getInstance(project).onBridgeAgentState(tabKey, it)
-            }
+            "session_stopped" -> service.onBridgeSessionStopped(tabKey)
+            "agent_state" -> str(data, "state")?.let { service.onBridgeAgentState(tabKey, it, str(data, "stopReason")) }
             "model_changed" -> str(data, "modelId")?.let { model ->
-                PiConversationService.getInstance(project).onBridgeModelChanged(tabKey, model)
+                service.onBridgeModelChanged(tabKey, model)
             }
             "file_modified" -> str(data, "path")?.let { path ->
-                PiConversationService.getInstance(project).onBridgeFileModified(tabKey, path)
+                service.onBridgeFileModified(tabKey, path)
             }
             else -> logger.info("Pi bridge: ignored unknown type '$type'")
         }
@@ -153,10 +175,19 @@ class PiBridgeServer(private val project: Project) {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
+    override fun dispose() {
+        try {
+            serverSocket?.close()
+        } catch (_: Exception) {
+        }
+        serverSocket = null
+    }
+
     override fun toString(): String = "PiBridgeServer(port=${serverSocket?.localPort})"
 
     companion object {
         const val PROTOCOL_VERSION = 1
+        private const val MAX_LINE_LENGTH = 64 * 1024
 
         fun getInstance(project: Project): PiBridgeServer = project.service()
     }

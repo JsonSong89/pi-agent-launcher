@@ -54,8 +54,8 @@ class PiConversationService(private val project: Project) {
     private var activeId: String? = null
     /** Agent working state per conversation id (bridge agent_state). */
     private val workingIds = mutableSetOf<String>()
-    @Volatile
-    private var currentModel: String? = null
+    /** Latest model per conversation id (bridge model_changed). */
+    private val models = mutableMapOf<String, String>()
 
     init {
         loadFromStore()
@@ -75,9 +75,22 @@ class PiConversationService(private val project: Project) {
         terminal.onRestartRequested = { conversationId, tabName ->
             val conversation = get(conversationId)
             if (conversation != null) {
-                terminal.launch(conversationId, tabName, conversation.piSessionId, conversation.title)
+                terminal.launch(conversationId, tabName, effectivePiSessionId(conversation), conversation.title)
             }
         }
+    }
+
+    /**
+     * piSessionId for launch: stale entries (session file deleted on the pi
+     * side) get a fresh id so pi starts a new session instead of resuming a
+     * deleted one.
+     */
+    private fun effectivePiSessionId(conversation: PiConversation): String {
+        if (conversation.piSessionId.isNotBlank()) return conversation.piSessionId
+        val fresh = UUID.randomUUID().toString()
+        conversation.piSessionId = fresh
+        persist()
+        return fresh
     }
 
     fun addListener(listener: Listener) { listeners.add(listener) }
@@ -94,7 +107,9 @@ class PiConversationService(private val project: Project) {
 
     fun isAgentWorking(id: String): Boolean = synchronized(workingIds) { id in workingIds }
 
-    fun currentModel(): String? = currentModel
+    fun currentModel(id: String? = null): String? = synchronized(models) {
+        models[id ?: activeId]
+    }
 
     fun createConversation(): PiConversation {
         val n = store().nextTitleSeq()
@@ -109,7 +124,7 @@ class PiConversationService(private val project: Project) {
             activeId = conversation.id
         }
         persist()
-        terminal().launch(conversation.id, conversation.tabName, conversation.piSessionId, conversation.title)
+        terminal().launch(conversation.id, conversation.tabName, effectivePiSessionId(conversation), conversation.title)
         PiStatusWidget.update(project)
         notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, conversation.id))
         return conversation
@@ -197,7 +212,7 @@ class PiConversationService(private val project: Project) {
         if (text.isEmpty()) return false
 
         if (!terminal().isAlive(conversation.id)) {
-            terminal().launch(conversation.id, conversation.tabName, conversation.piSessionId, conversation.title)
+            terminal().launch(conversation.id, conversation.tabName, effectivePiSessionId(conversation), conversation.title)
             showNotification(
                 "Pi terminal was restarted for ${conversation.title}. Send again after Pi is ready.",
                 NotificationType.WARNING
@@ -254,10 +269,32 @@ class PiConversationService(private val project: Project) {
             return
         }
         if (conversation.piSessionId == sessionId) return
-        // Rebind: same tab, new pi session. The old session file stays on disk.
+        // Rebind: the tab keeps its stable id and now represents the new pi
+        // session. The old session is preserved as a separate closed entry
+        // (its jsonl stays on disk), so the history stays reachable.
+        val previousSessionId = conversation.piSessionId
+        val archived = PiConversation(
+            id = UUID.randomUUID().toString(),
+            title = "${conversation.title} (archived)",
+            tabName = conversation.title,
+            piSessionId = previousSessionId,
+            createdAt = conversation.createdAt,
+            messages = conversation.messages.toMutableList(),
+            draft = ""
+        )
         conversation.piSessionId = sessionId
+        synchronized(conversations) {
+            // Keep insertion order stable: archived right before the live tab.
+            val reordered = LinkedHashMap<String, PiConversation>()
+            for ((key, value) in conversations) {
+                if (key == conversation.id) reordered[archived.id] = archived
+                reordered[key] = value
+            }
+            conversations.clear()
+            conversations.putAll(reordered)
+        }
         persist()
-        logger.info("Rebound conversation ${conversation.id} to pi session $sessionId")
+        logger.info("Rebound conversation ${conversation.id} to pi session $sessionId (archived $previousSessionId)")
         notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, conversation.id))
     }
 
@@ -266,7 +303,7 @@ class PiConversationService(private val project: Project) {
         PiStatusWidget.update(project)
     }
 
-    fun onBridgeAgentState(tabKey: String, state: String) {
+    fun onBridgeAgentState(tabKey: String, state: String, stopReason: String? = null) {
         val conversation = get(tabKey) ?: return
         val working = state == "working"
         synchronized(workingIds) {
@@ -274,12 +311,17 @@ class PiConversationService(private val project: Project) {
         }
         notifyListeners(ChangeEvent(ChangeKind.STATE, tabKey))
         if (!working && PiSettings.getInstance().state.notifyOnAgentEnd) {
-            showNotification("${conversation.title} finished.", NotificationType.INFORMATION)
+            val detail = when (stopReason) {
+                "error" -> " (stopped with an error)"
+                "aborted" -> " (aborted)"
+                else -> ""
+            }
+            showNotification("${conversation.title} finished.$detail", NotificationType.INFORMATION)
         }
     }
 
     fun onBridgeModelChanged(tabKey: String, modelId: String) {
-        currentModel = modelId
+        synchronized(models) { models[tabKey] = modelId }
         notifyListeners(ChangeEvent(ChangeKind.STATE, tabKey))
     }
 
@@ -287,16 +329,19 @@ class PiConversationService(private val project: Project) {
     fun onBridgeFileModified(tabKey: String, path: String) {
         if (!PiSettings.getInstance().state.openModifiedFiles) return
         val app = ApplicationManager.getApplication()
-        app.invokeLater {
-            app.runWriteAction {
-                try {
-                    val file = VirtualFileManager.getInstance().refreshAndFindFileByNioPath(Paths.get(path))
-                    if (file != null && file.isValid) {
-                        FileEditorManager.getInstance(project).openFile(file, false)
+        // Refresh off-EDT, then open on EDT. Never inside a write action —
+        // VFS refresh + openFile in runWriteAction can freeze the IDE.
+        app.executeOnPooledThread {
+            try {
+                VirtualFileManager.getInstance().refreshAndFindFileByNioPath(Paths.get(path))?.let { file ->
+                    app.invokeLater {
+                        if (!project.isDisposed && file.isValid) {
+                            FileEditorManager.getInstance(project).openFile(file, false)
+                        }
                     }
-                } catch (e: Exception) {
-                    logger.warn("Failed to open modified file $path: ${e.message}")
                 }
+            } catch (e: Exception) {
+                logger.warn("Failed to open modified file $path: ${e.message}")
             }
         }
     }
@@ -322,6 +367,26 @@ class PiConversationService(private val project: Project) {
         }
         // Terminals are not auto-revived; the user clicks a conversation to
         // relaunch (`pi --session`).
+        // Existence reconciliation (v1): pi-side files deleted by the user (via
+        // /resume picker) mark the entry stale so we do not advertise a resume
+        // that would start a fresh session under a stale id.
+        reconcileSessionFiles()
+    }
+
+    private fun reconcileSessionFiles() {
+        val cwd = project.basePath ?: return
+        var changed = false
+        synchronized(conversations) {
+            for (entry in conversations.values.toList()) {
+                val conversation = entry
+                if (!PiTerminalService.sessionFileExists(conversation.piSessionId, cwd)) {
+                    conversation.piSessionId = ""
+                    changed = true
+                    logger.info("Conversation ${conversation.id} session file is gone; marked stale")
+                }
+            }
+        }
+        if (changed) persist()
     }
 
     private fun persist() {

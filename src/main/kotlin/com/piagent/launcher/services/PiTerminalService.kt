@@ -257,11 +257,14 @@ class PiTerminalService(private val project: Project) : Disposable {
             // Env prefix for the bridge extension (PowerShell on Windows, POSIX shell otherwise).
             if (endpoint != null) {
                 if (SystemInfo.isWindows) {
+                    // Assumes PowerShell, the JetBrains default shell on Windows.
+                    // cmd users: bridge silently inactive (documented limitation).
                     append("\$env:PI_LAUNCHER_PORT='${endpoint.port}'; ")
                     append("\$env:PI_LAUNCHER_TOKEN='${endpoint.token}'; ")
                     append("\$env:PI_LAUNCHER_TAB_KEY='$conversationId'; ")
                 } else {
-                    append("PI_LAUNCHER_PORT=${endpoint.port} ")
+                    // `env` prefix works in bash/zsh/fish alike, unlike VAR=val.
+                    append("env PI_LAUNCHER_PORT=${endpoint.port} ")
                     append("PI_LAUNCHER_TOKEN='${endpoint.token}' ")
                     append("PI_LAUNCHER_TAB_KEY='$conversationId' ")
                 }
@@ -423,7 +426,7 @@ class PiTerminalService(private val project: Project) : Disposable {
             return sessionDir().resolve("--$cleaned--")
         }
 
-        private fun sessionFileExists(piSessionId: String, cwd: String): Boolean = try {
+        fun sessionFileExists(piSessionId: String, cwd: String): Boolean = try {
             val dir = sessionDirFor(cwd)
             Files.isDirectory(dir) && Files.list(dir).use { stream ->
                 stream.anyMatch { it.fileName.toString().endsWith("_${piSessionId}.jsonl") }

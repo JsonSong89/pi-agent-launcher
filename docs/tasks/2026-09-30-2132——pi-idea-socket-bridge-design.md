@@ -94,8 +94,8 @@
 
 逻辑：扫 `~/.pi/agent/sessions/--<projectPath>--/`（启动时显式注入 `--session-dir ~/.pi/agent/sessions`，让插件与 pi 的目录约定确定，不受用户 `sessionDir`/env 配置漂移影响）：
 
-- v1 范围（存在性对账）：逐条目校验 `*_<piSessionId>.jsonl` 是否存在；不存在（用户在 pi 侧删过）→ 条目降级 closed/标记。同时作为 resume 判定：文件存在 → `--session <piSessionId>`，否则 `--session-id <piSessionId>`
-- v2 范围（mtime 重绑）：失联窗口内出现史断的文件 Y → 修正 tab 绑定。边界（知情即可）：失联窗口内多个会话都被写过时只能取最新，切换轨迹不可还原
+- v1（已实现，存在性对账）：IDEA 启动加载索引时逐条目校验 `*_<piSessionId>.jsonl` 是否存在；不存在（用户在 pi 侧删过）→ piSessionId 置空，下次 launch 重新生成新 id（避免用陈旧 id resume 出空会话）。同时作为 resume 判定：launch 时文件存在 → `--session <piSessionId>`，否则 `--session-id`
+- v2（不做，理由见 §七）：mtime 重绑失联窗口的会话切换还原
 
 ## 六、socket 解锁的功能（迭代顺序）
 
@@ -120,12 +120,17 @@
 | 风险 | 缓解 |
 |---|---|
 | `--session-id` 与用户 extraArgs（`--continue`/`--resume` 等）冲突导致启动失败 | 启动前校验/过滤冲突参数 |
-| `/fork`、`/clone` 产生新 id 造成脱钩 | `session_changed` 换绑 + 目录对账双保险 |
-| socket 生命周期错位（IDEA 重启后 pi 侧路径失效） | per-request connect + 失败静默降级 + 对账自愈 |
-| 全局 extensions 目录与其他管理者冲突/被用户手改 | 只写自己文件 + 文件头声明 + 启动时校验文件存在与内容 hash |
+| `/fork`、`/clone` 产生新 id 造成脱钩 | `session_changed` 换绑（旧会话归档为 closed 条目）+ 存在性对账 |
+| 消息乱序导致换绑丢失 | 去重按 (tabKey, type) 分域，不同 type 不共用时间线 |
+| 偶发 connect 失败丢消息 | extension 侧超时 + 一次重试；服务端 seq 去重天然幂等 |
+| bridge 消息线程安全 | 服务端 EDT 分发，处理前校验 project 已释放；socket Disposable |
+| socket 生命周期错位（IDEA 重启后 pi 侧端口/token 失效） | per-request connect + 失败静默降级 + 对账自愈 |
+| 全局 extensions 目录与其他管理者冲突/被用户手改 | 只写自己文件 + 文件头声明 + 启动时校验内容版本 |
 | 协议版本漂移 | v 主版本 + 未知 type 丢弃 + 解析失败告警 |
-| Windows named pipe 边角（AV 拦截、实现差异） | 传输层接口隔离双实现；首期可 Linux 先行、Windows beta |
+| 非默认 shell 下 env 前缀失效 | 已知限制：Windows 假定 PowerShell（JetBrains 默认，cmd 不支持）；POSIX 用 `env` 前缀覆盖 bash/zsh/fish |
 | `--session <id>` 语义依赖 pi 版本 | 文档声明最低 pi 版本要求 |
+
+对账范围说明（审查后收敛）：v1 存在性对账已实现（启动时校验 pi 会话文件，丢失则置空 piSessionId，下次 launch 重新生成）；v2 mtime 重绑**不做**——JetBrains terminal 的 shell 进程随 IDE 关闭而终止，“IDE 关闭期间用户在 terminal 里 /new”不成立，残余风险仅剩运行期 socket 短暂失联（已由 extension 重试覆盖）。
 
 ## 八、决策记录（已对齐）
 

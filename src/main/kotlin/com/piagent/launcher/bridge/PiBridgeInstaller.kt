@@ -18,7 +18,7 @@ object PiBridgeInstaller {
 
     private val logger = Logger.getInstance(PiBridgeInstaller::class.java)
 
-    private const val VERSION = 1
+    private const val VERSION = 2
 
     // language=TypeScript
     private val SOURCE = """
@@ -38,18 +38,34 @@ function enabled() {
 
 function send(type, data) {
   if (!enabled()) return;
-  try {
-    const net = require("node:net");
-    const payload = JSON.stringify({ v: 1, seq: seq++, type, tabKey: TAB_KEY, token: TOKEN, data }) + "\n";
-    const socket = net.connect(PORT, "127.0.0.1");
-    socket.on("error", () => {});
-    socket.on("connect", () => {
-      socket.write(payload);
-      socket.end();
-    });
-  } catch (_e) {
-    // bridge is best-effort; never break pi
-  }
+  const payload = JSON.stringify({ v: 1, seq: seq++, type, tabKey: TAB_KEY, token: TOKEN, data }) + "\n";
+  const attempt = (timeoutMs) => {
+    try {
+      const net = require("node:net");
+      const socket = net.connect(PORT, "127.0.0.1");
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        try { socket.destroy(); } catch (_e) {}
+      };
+      socket.setTimeout(timeoutMs, finish);
+      socket.on("error", finish);
+      socket.on("close", finish);
+      socket.on("connect", () => {
+        socket.write(payload);
+        socket.end();
+      });
+    } catch (_e) {
+      // bridge is best-effort; never break pi
+    }
+  };
+  attempt(500);
+  // One retry shortly after covers transient connect failures (e.g. first
+  // message right after the server started). Late retry is harmless: the
+  // server de-dups by (tabKey, type) seq.
+  const retryTimer = setTimeout(() => attempt(1500), 1500);
+  if (retryTimer.unref) retryTimer.unref();
 }
 
 function refreshSessionId(ctx) {
@@ -96,11 +112,13 @@ export default function (pi) {
     } catch (_e) {}
   });
 
-  pi.on("tool_call", (event, _ctx) => {
+  // Report from tool_result: the file is actually written by then; a
+  // tool_call report would race the write and refresh nothing.
+  pi.on("tool_result", (event, _ctx) => {
     try {
       const tool = event?.data?.tool ?? event?.tool;
-      const args = event?.data?.args ?? event?.args;
-      if (tool && /edit|write|patch/i.test(String(tool))) {
+      if (tool && /edit|write|patch|apply/i.test(String(tool))) {
+        const args = event?.data?.args ?? event?.args;
         const path = args?.filePath ?? args?.file_path ?? args?.path;
         if (path) send("file_modified", { path: String(path) });
       }

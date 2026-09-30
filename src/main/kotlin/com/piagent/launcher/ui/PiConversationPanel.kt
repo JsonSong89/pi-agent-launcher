@@ -294,7 +294,7 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
 
             val alive = active != null && conversations.isTerminalAlive(active.id)
             val working = active != null && conversations.isAgentWorking(active.id)
-            val currentModel = conversations.currentModel()
+            val currentModel = active?.let { conversations.currentModel(it.id) }
             statusLabel.text = when {
                 active == null -> "No active conversation"
                 working -> "${active.title} · agent working${currentModel?.let { " · $it" } ?: ""}"

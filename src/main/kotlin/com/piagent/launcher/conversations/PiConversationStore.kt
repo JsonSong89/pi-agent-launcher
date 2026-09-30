@@ -46,8 +46,10 @@ class PiConversationStore(private val project: Project) : PersistentStateCompone
 
     override fun loadState(state: State) {
         // Drop entries that lost required fields (corrupt/legacy XML).
+        // Blank piSessionId is valid: it marks a stale entry (session file
+        // deleted on the pi side) that gets a fresh id on next launch.
         state.entries = state.entries.filter {
-            it.id.isNotBlank() && it.piSessionId.isNotBlank() && it.title.isNotBlank()
+            it.id.isNotBlank() && it.title.isNotBlank()
         }.toMutableList()
         if (state.activeId != null && state.entries.none { it.id == state.activeId }) {
             state.activeId = null

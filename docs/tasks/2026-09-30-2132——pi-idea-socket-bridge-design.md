@@ -94,7 +94,7 @@
 
 逻辑：扫 `~/.pi/agent/sessions/--<projectPath>--/`（启动时显式注入 `--session-dir ~/.pi/agent/sessions`，让插件与 pi 的目录约定确定，不受用户 `sessionDir`/env 配置漂移影响）：
 
-- v1（已实现，存在性对账）：IDEA 启动加载索引时逐条目校验 `*_<piSessionId>.jsonl` 是否存在；不存在（用户在 pi 侧删过）→ piSessionId 置空，下次 launch 重新生成新 id（避免用陈旧 id resume 出空会话）。同时作为 resume 判定：launch 时文件存在 → `--session <piSessionId>`，否则 `--session-id`
+- v1（已实现，launch 时判定）：**不在启动时对账**——resume vs 新建在 launch 时用 `sessionFileExists` 判定（此刻 jsonl 必已落盘，避免刚建会话就重启时误杀 id）；pi 侧文件被删则用同 id `--session-id` 重建
 - v2（不做，理由见 §七）：mtime 重绑失联窗口的会话切换还原
 
 ## 六、socket 解锁的功能（迭代顺序）
@@ -130,7 +130,9 @@
 | 非默认 shell 下 env 前缀失效 | 已知限制：Windows 假定 PowerShell（JetBrains 默认，cmd 不支持）；POSIX 用 `env` 前缀覆盖 bash/zsh/fish |
 | `--session <id>` 语义依赖 pi 版本 | 文档声明最低 pi 版本要求 |
 
-对账范围说明（审查后收敛）：v1 存在性对账已实现（启动时校验 pi 会话文件，丢失则置空 piSessionId，下次 launch 重新生成）；v2 mtime 重绑**不做**——JetBrains terminal 的 shell 进程随 IDE 关闭而终止，“IDE 关闭期间用户在 terminal 里 /new”不成立，残余风险仅剩运行期 socket 短暂失联（已由 extension 重试覆盖）。
+对账范围说明（审查后收敛）：resume 判定收敛到 launch 时刻（jsonl 必已落盘，启动期清空 id 会误杀刚建会话）；v2 mtime 重绑**不做**——JetBrains terminal 的 shell 进程随 IDE 关闭而终止，“IDE 关闭期间用户在 terminal 里 /new”不成立，残余风险仅剩运行期 socket 短暂失联（已由 extension 重试覆盖）。
+
+`/new` 换绑补充（二次审查后）：pi 返回的 sessionId 首次确认时直接采纳（不归档，防 pi 侧 id 规范化差异误归档）；后续变更才归档，归档标题查重（` (archived)`、` (archived) (2)`…）。归档条目的复活：下拉选中未存活会话即按需 `pi --session` 重启（同设计§恢复语义），复活时去掉 archived 后缀。
 
 ## 八、决策记录（已对齐）
 

@@ -181,6 +181,7 @@ class PiBridgeServer(private val project: Project) : Disposable {
         } catch (_: Exception) {
         }
         serverSocket = null
+        started.set(false)
     }
 
     override fun toString(): String = "PiBridgeServer(port=${serverSocket?.localPort})"

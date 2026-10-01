@@ -134,17 +134,12 @@ class PiConversationService(private val project: Project) {
             conversations[id]
         } ?: return
         persist()
-        // Revive on demand (design §恢复语义): selecting a closed/archived
-        // conversation relaunches it, resuming its pi session.
         if (!terminal().isAlive(conversation.id)) {
-            if (conversation.title.endsWith(ARCHIVED_SUFFIX)) {
-                conversation.title = conversation.title.removeSuffix(ARCHIVED_SUFFIX)
-            }
-            terminal().launch(conversation.id, conversation.tabName, conversation.piSessionId, conversation.title)
+            restoreTerminal(conversation.id)
         } else {
             terminal().selectTab(conversation.id, requestFocus = false)
+            notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
         }
-        notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
     }
 
     fun deleteConversation(id: String) {
@@ -251,11 +246,31 @@ class PiConversationService(private val project: Project) {
 
     fun checkTerminal(id: String): Boolean {
         val conversation = get(id) ?: return false
-        val alive = terminal().isAlive(id)
-        val status = if (alive) "running" else "closed"
-        showNotification("${conversation.title} terminal is $status.", NotificationType.INFORMATION)
+        if (terminal().isAlive(id)) {
+            showNotification("${conversation.title} terminal is running.", NotificationType.INFORMATION)
+            notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
+            return true
+        }
+        restoreTerminal(id)
+        showNotification("Restarting ${conversation.title} and resuming the session…", NotificationType.INFORMATION)
+        return false
+    }
+
+    /** Reopen a closed Pi terminal and resume its bound session when possible. */
+    fun restoreTerminal(id: String): Boolean {
+        val conversation = get(id) ?: return false
+        if (terminal().isAlive(id)) {
+            terminal().selectTab(id, requestFocus = false)
+            notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
+            return true
+        }
+        if (conversation.title.endsWith(ARCHIVED_SUFFIX)) {
+            conversation.title = conversation.title.removeSuffix(ARCHIVED_SUFFIX)
+        }
+        persist()
+        terminal().launch(conversation.id, conversation.tabName, conversation.piSessionId, conversation.title)
         notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, id))
-        return alive
+        return true
     }
 
     fun showToolWindow(focus: Boolean = true) {

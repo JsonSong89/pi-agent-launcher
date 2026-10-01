@@ -38,12 +38,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.DefaultComboBoxModel
-import javax.swing.DefaultListCellRenderer
 import javax.swing.JButton
 import javax.swing.JComponent
+import javax.swing.JLabel
 import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.KeyStroke
@@ -51,6 +53,9 @@ import javax.swing.ScrollPaneConstants
 import javax.swing.SwingUtilities
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
+import javax.swing.event.PopupMenuEvent
+import javax.swing.event.PopupMenuListener
+import javax.swing.plaf.basic.ComboPopup
 
 /**
  * Right-side conversation manager: history dropdown, user send log, draft input.
@@ -71,7 +76,12 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
         toolTipText = "Append open workspace files to input"
     }
     private val timeFormat = SimpleDateFormat("HH:mm")
+    private companion object {
+        const val COMBO_DELETE_HIT_PX = 22
+    }
     private var syncing = false
+    private var comboDeleteClickInstalled = false
+    private var suppressComboAction = false
     @Volatile
     private var disposed = false
 
@@ -107,34 +117,19 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
     }
 
     private fun buildUi(): JPanel {
-        combo.renderer = object : DefaultListCellRenderer() {
-            override fun getListCellRendererComponent(
-                list: JList<*>,
-                value: Any?,
-                index: Int,
-                isSelected: Boolean,
-                cellHasFocus: Boolean
-            ): Component {
-                val conversation = value as? PiConversation
-                val label = super.getListCellRendererComponent(list, conversation?.title ?: "No conversations", index, isSelected, cellHasFocus)
-                if (conversation != null) {
-                    val alive = conversations.isTerminalAlive(conversation.id)
-                    val working = conversations.isAgentWorking(conversation.id)
-                    val suffix = when {
-                        working -> " ●"
-                        !alive -> " (closed)"
-                        else -> ""
-                    }
-                    text = (conversation?.title ?: "") + suffix
-                    if (conversation != null && !alive && !working && !isSelected) {
-                        foreground = JBColor.GRAY
-                    }
+        combo.renderer = ConversationComboRenderer()
+        combo.addPopupMenuListener(object : PopupMenuListener {
+            override fun popupMenuWillBecomeVisible(e: PopupMenuEvent) {
+                installComboDeleteClickHandler()
+                if (!comboDeleteClickInstalled) {
+                    SwingUtilities.invokeLater { installComboDeleteClickHandler() }
                 }
-                return label
             }
-        }
+            override fun popupMenuWillBecomeInvisible(e: PopupMenuEvent) {}
+            override fun popupMenuCanceled(e: PopupMenuEvent) {}
+        })
         combo.addActionListener {
-            if (syncing) return@addActionListener
+            if (syncing || suppressComboAction) return@addActionListener
             val selected = combo.selectedItem as? PiConversation ?: return@addActionListener
             persistDraft()
             conversations.setActive(selected.id)
@@ -441,11 +436,87 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
         conversations.appendWorkspaceFiles(paths)
     }
 
+    private fun installComboDeleteClickHandler() {
+        if (comboDeleteClickInstalled) return
+        val popup = combo.ui.getAccessibleChild(combo, 0) as? ComboPopup ?: return
+        val list = popup.list
+        list.addMouseListener(object : MouseAdapter() {
+            override fun mousePressed(e: MouseEvent) {
+                if (handleComboDeleteClick(list, e)) e.consume()
+            }
+
+            override fun mouseReleased(e: MouseEvent) {
+                if (suppressComboAction) e.consume()
+            }
+        })
+        comboDeleteClickInstalled = true
+    }
+
+    private fun handleComboDeleteClick(list: JList<*>, e: MouseEvent): Boolean {
+        val index = list.locationToIndex(e.point)
+        if (index < 0) return false
+        val conversation = list.model.getElementAt(index) as? PiConversation ?: return false
+        if (conversations.isTerminalAlive(conversation.id)) return false
+        val cell = list.getCellBounds(index, index) ?: return false
+        if (e.x < cell.x + cell.width - JBUI.scale(COMBO_DELETE_HIT_PX)) return false
+        // Block the combo's select-to-activate path so a closed session is
+        // not relaunched just to be deleted.
+        suppressComboAction = true
+        combo.hidePopup()
+        conversations.deleteConversation(conversation.id)
+        SwingUtilities.invokeLater { suppressComboAction = false }
+        return true
+    }
+
     override fun dispose() {
         disposed = true
         persistDraft()
         conversations.removeListener(listener)
         PiSettings.getInstance().removeChangeListener(settingsListener)
+    }
+
+    private inner class ConversationComboRenderer : JPanel(BorderLayout()), javax.swing.ListCellRenderer<PiConversation> {
+        private val title = JLabel()
+        private val deleteHint = JLabel("×").apply {
+            font = JBUI.Fonts.smallFont()
+            foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
+            border = JBUI.Borders.emptyLeft(6)
+        }
+
+        init {
+            isOpaque = true
+            add(title, BorderLayout.CENTER)
+            add(deleteHint, BorderLayout.EAST)
+            border = JBUI.Borders.empty(2, 6)
+        }
+
+        override fun getListCellRendererComponent(
+            list: JList<out PiConversation>,
+            value: PiConversation?,
+            index: Int,
+            isSelected: Boolean,
+            cellHasFocus: Boolean
+        ): Component {
+            val conversation = value
+            val alive = conversation != null && conversations.isTerminalAlive(conversation.id)
+            val working = conversation != null && conversations.isAgentWorking(conversation.id)
+            val suffix = when {
+                conversation == null -> ""
+                working -> " ●"
+                !alive -> " (closed)"
+                else -> ""
+            }
+            title.text = (conversation?.title ?: "No conversations") + suffix
+            deleteHint.isVisible = index >= 0 && conversation != null && !alive
+            val selectedBg = list.selectionBackground
+            val selectedFg = list.selectionForeground
+            val normalBg = list.background
+            val normalFg = if (conversation != null && !alive && !working) JBColor.GRAY else list.foreground
+            background = if (isSelected) selectedBg else normalBg
+            title.foreground = if (isSelected) selectedFg else normalFg
+            deleteHint.foreground = if (isSelected) selectedFg else JBUI.CurrentTheme.ContextHelp.FOREGROUND
+            return this
+        }
     }
 
     private inner class NewConversationAction : AnAction("New Conversation", "Start a new Pi conversation", AllIcons.General.Add), DumbAware {
@@ -493,7 +564,11 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
     }
 
-    private inner class CheckTerminalAction : AnAction("Check Terminal", "Check whether the Pi terminal is still running", AllIcons.Actions.Refresh), DumbAware {
+    private inner class CheckTerminalAction : AnAction(
+        "Restore Terminal",
+        "Reopen a closed Pi terminal and resume its session",
+        AllIcons.Actions.Refresh
+    ), DumbAware {
         override fun actionPerformed(e: AnActionEvent) {
             val id = conversations.active()?.id ?: return
             conversations.checkTerminal(id)

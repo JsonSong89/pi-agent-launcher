@@ -362,10 +362,10 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
         val delete = iconButton(AllIcons.General.Remove, "Delete") {
             conversations.deleteMessage(conversationId, index)
         }
-        val actions = JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)).apply {
+        val actions = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(4), 0)).apply {
             isOpaque = false
-            add(copy)
             add(delete)
+            add(copy)
         }
         body.rows = message.text.lines().size.coerceIn(1, 20)
         return object : JPanel(BorderLayout()) {
@@ -394,8 +394,24 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             isContentAreaFilled = false
             isOpaque = false
             isFocusable = false
+            rolloverEnabled = true
             margin = JBUI.emptyInsets()
-            preferredSize = Dimension(JBUI.scale(20), JBUI.scale(20))
+            preferredSize = Dimension(JBUI.scale(22), JBUI.scale(22))
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseEntered(e: MouseEvent) {
+                    isOpaque = true
+                    isContentAreaFilled = true
+                    background = JBUI.CurrentTheme.ActionButton.hoverBackground()
+                    repaint()
+                }
+
+                override fun mouseExited(e: MouseEvent) {
+                    isOpaque = false
+                    isContentAreaFilled = false
+                    background = null
+                    repaint()
+                }
+            })
             addActionListener { onClick() }
         }
     }

@@ -27,6 +27,7 @@ import com.intellij.util.ui.JBUI
 import java.awt.datatransfer.StringSelection
 import com.piagent.launcher.conversations.PiConversation
 import com.piagent.launcher.conversations.PiConversationService
+import com.piagent.launcher.conversations.PiUserMessage
 import com.piagent.launcher.conversations.PiConversationService.ChangeKind
 import com.piagent.launcher.settings.PiSettings
 import java.awt.BorderLayout
@@ -37,6 +38,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
+import javax.swing.Box
+import javax.swing.BoxLayout
 import javax.swing.DefaultComboBoxModel
 import javax.swing.DefaultListCellRenderer
 import javax.swing.JButton
@@ -57,7 +60,8 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
     private val conversations = PiConversationService.getInstance(project)
     private val combo = ComboBox<PiConversation>()
     private val statusLabel = JBLabel()
-    private val historyArea = JBTextArea()
+    private val historyList = JPanel()
+    private val historyScroll = JBScrollPane()
     private val inputArea = JBTextArea()
     private val sendButton = JButton("Send")
     private val copyInputButton = JButton(AllIcons.Actions.Copy).apply {
@@ -165,11 +169,16 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             add(statusLabel, BorderLayout.SOUTH)
         }
 
-        historyArea.apply {
-            isEditable = false
-            lineWrap = true
-            wrapStyleWord = true
-            emptyText.text = "User messages will appear here"
+        historyList.apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            isOpaque = false
+        }
+        historyScroll.apply {
+            setViewportView(historyList)
+            verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+            minimumSize = Dimension(0, JBUI.scale(80))
+            border = JBUI.Borders.empty(4, 8, 4, 8)
         }
 
         inputArea.apply {
@@ -254,14 +263,6 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             add(inputPanel, BorderLayout.CENTER)
         }
 
-        val historyScroll = JBScrollPane(
-            historyArea,
-            ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
-            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
-        ).apply {
-            minimumSize = Dimension(0, JBUI.scale(80))
-        }
-
         val splitter = JBSplitter(true, 0.52f).apply {
             firstComponent = historyScroll
             secondComponent = south
@@ -285,8 +286,7 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             combo.selectedItem = active
             combo.isEnabled = items.isNotEmpty()
 
-            historyArea.text = formatHistory(active)
-            historyArea.caretPosition = historyArea.document.length
+            rebuildHistory(active)
 
             if (inputArea.text != (active?.draft ?: "")) {
                 inputArea.text = active?.draft ?: ""
@@ -314,15 +314,94 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
 
     private fun applyConversationFont() {
         val font = PiSettings.getInstance().conversationFont()
-        historyArea.font = font
         inputArea.font = font
+        for (component in historyList.components) {
+            val text = (component as? JComponent)?.getClientProperty("pi-history-text") as? JBTextArea
+            text?.font = font
+        }
     }
 
-    private fun formatHistory(conversation: PiConversation?): String {
-        if (conversation == null || conversation.messages.isEmpty()) return ""
-        return conversation.messages.joinToString("\n\n") { message ->
-            val time = timeFormat.format(Date(message.timestamp))
-            "[$time]\n${message.text}"
+    private fun rebuildHistory(conversation: PiConversation?) {
+        historyList.removeAll()
+        val messages = conversation?.messages.orEmpty()
+        if (messages.isEmpty()) {
+            historyList.add(JBLabel("User messages will appear here").apply {
+                foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
+                font = JBUI.Fonts.smallFont()
+                alignmentX = Component.LEFT_ALIGNMENT
+                border = JBUI.Borders.empty(8, 2)
+            })
+        } else {
+            val conversationId = conversation!!.id
+            messages.forEachIndexed { index, message ->
+                if (index > 0) {
+                    historyList.add(Box.createVerticalStrut(JBUI.scale(8)))
+                }
+                historyList.add(historyCard(conversationId, index, message))
+            }
+        }
+        historyList.revalidate()
+        historyList.repaint()
+        SwingUtilities.invokeLater {
+            val bar = historyScroll.verticalScrollBar
+            bar.value = bar.maximum
+        }
+    }
+
+    private fun historyCard(conversationId: String, index: Int, message: PiUserMessage): JComponent {
+        val time = JBLabel(timeFormat.format(Date(message.timestamp))).apply {
+            font = JBUI.Fonts.smallFont()
+            foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
+        }
+        val body = JBTextArea(message.text).apply {
+            isEditable = false
+            isOpaque = false
+            lineWrap = true
+            wrapStyleWord = true
+            font = PiSettings.getInstance().conversationFont()
+            border = JBUI.Borders.empty(4, 0, 2, 0)
+        }
+        val copy = iconButton(AllIcons.Actions.Copy, "Copy") {
+            CopyPasteManager.getInstance().setContents(StringSelection(message.text))
+        }
+        val delete = iconButton(AllIcons.General.Remove, "Delete") {
+            conversations.deleteMessage(conversationId, index)
+        }
+        val actions = JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)).apply {
+            isOpaque = false
+            add(copy)
+            add(delete)
+        }
+        body.rows = message.text.lines().size.coerceIn(1, 20)
+        return object : JPanel(BorderLayout()) {
+            init {
+                putClientProperty("pi-history-text", body)
+                alignmentX = Component.LEFT_ALIGNMENT
+                isOpaque = true
+                background = JBColor.namedColor("ToolWindow.background", JBColor(0xF2F2F2, 0x3C3F41))
+                border = JBUI.Borders.compound(
+                    JBUI.Borders.customLine(JBColor.namedColor("Separator.separatorColor", JBColor.border()), 1),
+                    JBUI.Borders.empty(6, 8, 2, 6)
+                )
+                add(time, BorderLayout.NORTH)
+                add(body, BorderLayout.CENTER)
+                add(actions, BorderLayout.SOUTH)
+            }
+
+            override fun getMaximumSize(): Dimension = Dimension(Int.MAX_VALUE, preferredSize.height)
+        }
+    }
+
+    private fun iconButton(icon: javax.swing.Icon, tip: String, onClick: () -> Unit): JButton {
+        return JButton(icon).apply {
+            toolTipText = tip
+            isBorderPainted = false
+            isContentAreaFilled = false
+            isOpaque = false
+            isFocusable = false
+            margin = JBUI.emptyInsets()
+            preferredSize = Dimension(JBUI.scale(20), JBUI.scale(20))
+            addActionListener { onClick() }
         }
     }
 

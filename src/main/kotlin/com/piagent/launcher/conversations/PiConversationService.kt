@@ -228,6 +228,15 @@ class PiConversationService(private val project: Project) {
         return true
     }
 
+    fun deleteMessage(conversationId: String, index: Int): Boolean {
+        val conversation = get(conversationId) ?: return false
+        if (index !in conversation.messages.indices) return false
+        conversation.messages.removeAt(index)
+        persist()
+        notifyListeners(ChangeEvent(ChangeKind.STRUCTURE, conversationId))
+        return true
+    }
+
     fun isTerminalAlive(id: String): Boolean = terminal().isAlive(id)
 
     fun focusTerminal(id: String) {

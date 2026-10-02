@@ -394,7 +394,6 @@ class PiConversationPanel(private val project: Project) : SimpleToolWindowPanel(
             isContentAreaFilled = false
             isOpaque = false
             isFocusable = false
-            rolloverEnabled = true
             margin = JBUI.emptyInsets()
             preferredSize = Dimension(JBUI.scale(22), JBUI.scale(22))
             addMouseListener(object : MouseAdapter() {

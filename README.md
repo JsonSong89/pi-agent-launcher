@@ -37,7 +37,7 @@ Terminal tab  ──  ~/.pi/agent/extensions/pi-launcher-bridge.ts (lazy-install
 
 ## Configuration
 
-**Settings → Tools → Pi Agent**
+**Settings → Tools → Pi Terminal Bridge**
 
 | Setting | Description |
 |---|---|

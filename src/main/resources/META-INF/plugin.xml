@@ -34,7 +34,7 @@
     </ol>
 
     <h4>Configuration</h4>
-    <p>Open <b>Settings, Tools, Pi Agent</b> to pick the model, thinking level, launch options, and bridge features.</p>
+    <p>Open <b>Settings, Tools, Pi Terminal Bridge</b> to pick the model, thinking level, launch options, and bridge features.</p>
 
     <h3>Keyboard Shortcuts</h3>
     <ul>
@@ -76,7 +76,7 @@
                 parentId="tools"
                 instance="com.piterminal.bridge.settings.PiSettingsConfigurable"
                 id="com.piterminal.bridge.settings"
-                displayName="Pi Agent"/>
+                displayName="Pi Terminal Bridge"/>
 
         <statusBarWidgetFactory
                 id="PiAgentStatus"

@@ -37,7 +37,7 @@ Terminal 标签页 ── ~/.pi/agent/extensions/pi-launcher-bridge.ts（懒安�
 
 ## 配置
 
-**Settings → Tools → Pi Agent**
+**Settings → Tools → Pi Terminal Bridge**
 
 | 配置项 | 说明 |
 |---|---|

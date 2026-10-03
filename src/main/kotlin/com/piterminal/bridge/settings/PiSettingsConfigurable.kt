@@ -48,7 +48,7 @@ class PiSettingsConfigurable : Configurable {
         }
     }
 
-    override fun getDisplayName(): String = "Pi Agent"
+    override fun getDisplayName(): String = "Pi Terminal Bridge"
 
     override fun createComponent(): JComponent {
         val settings = PiSettings.getInstance().state

@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.piterminal.bridge</id>
     <name>Pi Terminal Bridge</name>
-    <vendor email="7s.ovors@gmail.com" url="https://github.com/JsonSong89/pi-jetbrains-terminal-bridge">JsonSong89</vendor>
+    <vendor email="jsonsong@gmail.com" url="https://github.com/JsonSong89/pi-jetbrains-terminal-bridge">JsonSong89</vendor>
 
     <description><![CDATA[
     <h2>Pi Terminal Bridge</h2>

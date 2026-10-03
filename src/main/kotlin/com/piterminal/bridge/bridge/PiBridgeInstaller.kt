@@ -22,7 +22,7 @@ object PiBridgeInstaller {
 
     // language=TypeScript
     private val SOURCE = """
-// Managed by pi-agent-launcher (JetBrains plugin). Do not edit; the plugin rewrites this file.
+// Managed by Pi Terminal Bridge (JetBrains plugin). Do not edit; the plugin rewrites this file.
 // Env-gated: active only when pi is launched by the plugin (PI_LAUNCHER_PORT/TOKEN/TAB_KEY).
 const PORT = Number(process.env.PI_LAUNCHER_PORT);
 const TOKEN = process.env.PI_LAUNCHER_TOKEN;

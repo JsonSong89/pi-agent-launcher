@@ -14,7 +14,7 @@ import java.awt.event.MouseEvent
  */
 class PiStatusWidgetFactory : StatusBarWidgetFactory {
 
-    override fun getId(): String = "PiAgentStatus"
+    override fun getId(): String = "PiBridgeStatus"
     override fun getDisplayName(): String = "Pi Bridge Status"
     override fun isAvailable(project: Project): Boolean = true
 
@@ -27,7 +27,7 @@ class PiStatusWidget(private val project: Project) : StatusBarWidget, StatusBarW
 
     private var statusBar: StatusBar? = null
 
-    override fun ID(): String = "PiAgentStatus"
+    override fun ID(): String = "PiBridgeStatus"
 
     override fun install(statusBar: StatusBar) {
         this.statusBar = statusBar
@@ -68,7 +68,7 @@ class PiStatusWidget(private val project: Project) : StatusBarWidget, StatusBarW
     companion object {
         fun update(project: Project) {
             val statusBar = WindowManager.getInstance().getStatusBar(project) ?: return
-            statusBar.updateWidget("PiAgentStatus")
+            statusBar.updateWidget("PiBridgeStatus")
         }
     }
 }

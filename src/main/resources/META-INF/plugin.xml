@@ -79,7 +79,7 @@
                 displayName="Pi Terminal Bridge"/>
 
         <statusBarWidgetFactory
-                id="PiAgentStatus"
+                id="PiBridgeStatus"
                 implementation="com.piterminal.bridge.services.PiStatusWidgetFactory"
                 order="after position"/>
 

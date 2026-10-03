@@ -39,7 +39,7 @@ Terminal 标签页 ── ~/.pi/agent/extensions/pi-launcher-bridge.ts（懒安�
 
 ### 快速上手
 
-1. 点击主工具栏的 **pi** 按钮（或按 `Alt+Shift+3`）。
+1. 点击主工具栏的 **pi** 按钮（或按 `Ctrl+Shift+P`）。
 2. Terminal 工具窗中打开专属 Pi 标签页，自动运行 `pi`。
 3. 编辑器选中代码，右键 → **发送到 Pi** —— 文件引用（`@path/file.go#L10-25`）追加到 Pi 输入栏。
 4. 关闭并重开 IDE —— 面板中列出全部会话，点击即重新拉起终端（pi TUI 重新启动）并用 `pi --session <id>` 恢复会话。

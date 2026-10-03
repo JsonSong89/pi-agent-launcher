@@ -1,4 +1,4 @@
-package com.piagent.launcher.ui
+package com.piterminal.bridge.ui
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
@@ -25,11 +25,11 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
 import java.awt.datatransfer.StringSelection
-import com.piagent.launcher.conversations.PiConversation
-import com.piagent.launcher.conversations.PiConversationService
-import com.piagent.launcher.conversations.PiUserMessage
-import com.piagent.launcher.conversations.PiConversationService.ChangeKind
-import com.piagent.launcher.settings.PiSettings
+import com.piterminal.bridge.conversations.PiConversation
+import com.piterminal.bridge.conversations.PiConversationService
+import com.piterminal.bridge.conversations.PiUserMessage
+import com.piterminal.bridge.conversations.PiConversationService.ChangeKind
+import com.piterminal.bridge.settings.PiSettings
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension

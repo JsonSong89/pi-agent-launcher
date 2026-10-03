@@ -1,4 +1,4 @@
-package com.piagent.launcher.services
+package com.piterminal.bridge.services
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.StatusBar
@@ -6,7 +6,7 @@ import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.util.Consumer
-import com.piagent.launcher.conversations.PiConversationService
+import com.piterminal.bridge.conversations.PiConversationService
 import java.awt.event.MouseEvent
 
 /**

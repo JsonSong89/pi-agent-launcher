@@ -1,4 +1,4 @@
-package com.piagent.launcher.settings
+package com.piterminal.bridge.settings
 
 import com.google.gson.Gson
 import com.google.gson.JsonObject

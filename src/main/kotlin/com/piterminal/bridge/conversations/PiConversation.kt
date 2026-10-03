@@ -1,4 +1,4 @@
-package com.piagent.launcher.conversations
+package com.piterminal.bridge.conversations
 
 /**
  * A conversation bound to one Pi terminal tab.

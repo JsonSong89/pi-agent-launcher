@@ -1,4 +1,4 @@
-package com.piagent.launcher.conversations
+package com.piterminal.bridge.conversations
 
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -10,9 +10,9 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.wm.ToolWindowManager
-import com.piagent.launcher.services.PiStatusWidget
-import com.piagent.launcher.services.PiTerminalService
-import com.piagent.launcher.settings.PiSettings
+import com.piterminal.bridge.services.PiStatusWidget
+import com.piterminal.bridge.services.PiTerminalService
+import com.piterminal.bridge.settings.PiSettings
 import java.nio.file.Paths
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter

@@ -1,4 +1,4 @@
-package com.piagent.launcher.services
+package com.piterminal.bridge.services
 
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
@@ -13,9 +13,9 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
-import com.piagent.launcher.bridge.PiBridgeInstaller
-import com.piagent.launcher.bridge.PiBridgeServer
-import com.piagent.launcher.settings.PiSettings
+import com.piterminal.bridge.bridge.PiBridgeInstaller
+import com.piterminal.bridge.bridge.PiBridgeServer
+import com.piterminal.bridge.settings.PiSettings
 import com.intellij.openapi.util.SystemInfo
 import java.nio.file.Files
 import java.nio.file.Path

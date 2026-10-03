@@ -1,4 +1,4 @@
-package com.piagent.launcher.settings
+package com.piterminal.bridge.settings
 
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.ProjectManager
@@ -7,7 +7,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
-import com.piagent.launcher.bridge.PiBridgeInstaller
+import com.piterminal.bridge.bridge.PiBridgeInstaller
 import javax.swing.*
 
 /**
@@ -199,7 +199,7 @@ class PiSettingsConfigurable : Configurable {
     private fun bridgeStatusText(): String {
         val extension = PiBridgeInstaller.diagnostics()
         val server = ProjectManager.getInstance().openProjects.firstOrNull()
-            ?.let { com.piagent.launcher.bridge.PiBridgeServer.getInstance(it).endpoint() }
+            ?.let { com.piterminal.bridge.bridge.PiBridgeServer.getInstance(it).endpoint() }
             ?.let { "server listening on 127.0.0.1:${it.port}" }
             ?: "server not started — starts with the first Pi terminal"
         return "$extension\n$server"

@@ -1,4 +1,4 @@
-package com.piagent.launcher.conversations
+package com.piterminal.bridge.conversations
 
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
@@ -14,8 +14,8 @@ import com.intellij.openapi.project.Project
  */
 @Service(Service.Level.PROJECT)
 @State(
-    name = "PiAgentLauncherConversations",
-    storages = [Storage("PiAgentLauncherConversations.xml")]
+    name = "PiTerminalBridgeConversations",
+    storages = [Storage("PiTerminalBridgeConversations.xml")]
 )
 class PiConversationStore(private val project: Project) : PersistentStateComponent<PiConversationStore.State> {
 

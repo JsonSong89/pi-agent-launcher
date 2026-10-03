@@ -1,4 +1,4 @@
-package com.piagent.launcher.actions
+package com.piterminal.bridge.actions
 
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -13,7 +13,7 @@ import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiFileSystemItem
-import com.piagent.launcher.conversations.PiConversationService
+import com.piterminal.bridge.conversations.PiConversationService
 
 /**
  * Send file(s) from Project View to the active conversation input.

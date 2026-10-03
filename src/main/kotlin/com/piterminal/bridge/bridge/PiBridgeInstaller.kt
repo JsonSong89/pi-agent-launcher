@@ -1,4 +1,4 @@
-package com.piagent.launcher.bridge
+package com.piterminal.bridge.bridge
 
 import com.intellij.openapi.diagnostic.Logger
 import java.nio.file.Files

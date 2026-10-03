@@ -1,4 +1,4 @@
-package com.piagent.launcher.bridge
+package com.piterminal.bridge.bridge
 
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -8,7 +8,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.piagent.launcher.conversations.PiConversationService
+import com.piterminal.bridge.conversations.PiConversationService
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.InetSocketAddress

@@ -1,92 +1,74 @@
-# Pi Agent Launcher
+# Pi Terminal Bridge
 
-[中文文档](README_CN.md)
+[JetBrains plugin] Persistent [Pi coding agent](https://pi.dev) sessions for JetBrains IDEs — launch, track and resume conversations, with a live bridge between the IDE and the pi CLI terminal.
 
-One-click [Pi coding agent](https://pi.dev) launcher for JetBrains IDEs — opens a "Pi" tab inside the Terminal tool window and starts `pi` automatically.
-
-[![JetBrains Plugin](https://img.shields.io/badge/JetBrains-Plugin-orange)](https://plugins.jetbrains.com/plugin/31737-pi-agent-launcher)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+> **Prerequisite:** install the Pi CLI separately.
+> `npm i -g @anthropic-ai/pi-coding-agent` or visit [pi.dev](https://pi.dev)
 
 ## Features
 
-- **One-click launch** — Click the π button in the toolbar to start Pi
-- **Terminal integration** — Pi runs as a tab inside the IDE's Terminal window (alongside Local)
-- **Persistent conversation manager** — Sessions survive IDE restarts (id/name aligned with pi's own session files); reattach with `pi --session` on demand
-- **Live session binding** — A bridge extension keeps the IDE in sync when you run `/new`, `/fork` or `/resume` inside the terminal
-- **Completion notifications** — Optional balloon when the agent settles (off by default)
-- **Open files modified by Pi** — Optional auto-open/refresh in the editor (off by default)
-- **Send to Pi** — Select code → Right-click → "Send to Pi" inserts `@path/file.go#L10-25` into Pi's input
-- **Model configuration** — Pick model and thinking level from `~/.pi/agent/models.json`
+- **Persistent conversations** — Pi sessions survive IDE restarts; conversations are listed in the Pi panel and relaunch with `pi --session <id>` on click. Terminology is not auto-revived on startup; you decide when to resume.
+- **Live IDEA ↔ pi bridge** — a loopback TCP channel with a per-instance token keeps the panel in sync with the terminal in real time:
+  - working ● / idle badges per conversation
+  - current model display
+  - session rebind on `/new`, `/fork`, `/resume` — the old session is archived as a separate closed entry, still resumable
+  - rename a conversation in the panel (duplicates forbidden)
+- **One-click launch** — the toolbar button opens a dedicated Pi tab in the Terminal tool window and runs `pi` with your configured model / thinking level / extra args.
+- **Send to Pi** — select code in the editor, right-click → *Send to Pi*, and a file reference (`@path/file.go#L10-25`) lands in Pi's input.
+- **Notifications (opt-in)**
+  - balloon when the agent finishes (including error/abort reason)
+  - automatically refresh + open files Pi edited
+- **Diagnostics** — Settings shows the bridge extension state and server port.
 
-## Keyboard Shortcuts
+## How the bridge works
 
-| Shortcut | Action |
-|----------|--------|
-| `Cmd+Esc` / `Ctrl+Esc` | Launch or focus Pi |
-| `Cmd+Shift+P` / `Ctrl+Shift+P` | Send selection to Pi |
+```
+IDEA (PiBridgeServer, loopback TCP + token)
+   ▲                                   │
+   │ env PI_LAUNCHER_PORT/TOKEN/TAB_KEY│  pi --session-id <uuid> --name <tab> --session-dir ~/.pi/agent/sessions
+   │                                   ▼
+Terminal tab  ──  ~/.pi/agent/extensions/pi-launcher-bridge.ts (lazy-installed, hash-versioned)
+```
 
-## Quick Start
-
-1. Install the plugin from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/31737-pi-agent-launcher)
-2. Ensure `pi` CLI is installed and in your PATH
-3. Click the **π** button in the toolbar
-4. A "Pi" tab opens in the Terminal window and `pi` starts automatically
+- The extension is installed on first terminal launch and reports `session_changed`, `agent_state`, `model_changed`, `file_modified` (from `tool_result`, when the file is actually written).
+- The plugin injects the session id at launch; `/new`-style runtime rebinds arrive as `session_changed` and archive the previous session.
+- Protocol: `{v, seq, type, tabKey, token, data}` — one JSON object per line, de-dup per `(tabKey, type)`, unknown types dropped, version mismatches dropped loudly.
+- Everything is best-effort: if the bridge dies, conversations still work via manual resume.
 
 ## Configuration
 
 **Settings → Tools → Pi Agent**
 
-- **Model** — Select from models defined in `~/.pi/agent/models.json`
-- **Custom model id** — Override the dropdown with any model identifier
-- **Thinking level** — Default / none / low / medium / high / max
-- **Pi command** — Custom path to pi binary
-- **Extra arguments** — Additional CLI flags
-- **Send shortcut** — Ctrl+Enter or Enter
-- **Conversation font size** — Size only; family follows Editor → Font
-- **Notify on agent completion** — Balloon when the agent settles (default off)
-- **Open files modified by Pi** — Auto-open/refresh files Pi edits (default off)
+| Setting | Description |
+|---|---|
+| Model / thinking level / extra args | Passed to the `pi` CLI at launch |
+| Notify on agent end | Balloon when a conversation's agent settles (opt-in) |
+| Open files modified by Pi | Refresh + open in editor after writes (opt-in) |
+| Bridge diagnostics | Read-only: extension state + server port |
 
-## Supported IDEs
+## Keyboard shortcuts
 
-Works with all JetBrains IDEs: IntelliJ IDEA, GoLand, PyCharm, WebStorm, PhpStorm, CLion, Rider, RubyMine, and more.
+- `Ctrl+Shift+\`` — open the Pi conversation window
+- `Ctrl+Shift+L` — send selection / file to Pi
 
-## Development
+## Build
 
 ```bash
-# Build
-./gradlew build
-
-# Run sandbox IDE for testing
-./gradlew runIde
-
-# Package
-./gradlew buildPlugin
+./gradlew build        # verify
+./gradlew runIde       # sandbox IDE
+./gradlew buildPlugin  # distributable zip
 ```
 
-## Project Structure
+JDK 21 toolchain, IntelliJ Platform Gradle Plugin 2.x, target 2026.1, `sinceBuild=243`.
 
-```
-src/main/kotlin/com/piagent/launcher/
-├── actions/
-│   ├── LaunchPiAction.kt          # Toolbar button → launch Pi
-│   ├── OpenPiAction.kt            # Cmd+Esc → focus Pi
-│   └── SendSelectionAction.kt     # Send @file#L reference
-├── bridge/
-│   ├── PiBridgeServer.kt        # Loopback TCP server: events from pi extension
-│   └── PiBridgeInstaller.kt     # Writes ~/.pi/agent/extensions/pi-launcher-bridge.ts
-├── conversations/
-│   ├── PiConversation.kt        # Conversation model (id + piSessionId)
-│   ├── PiConversationStore.kt   # PersistentStateComponent index
-│   └── PiConversationService.kt # Conversation lifecycle + bridge routing
-├── services/
-│   ├── PiTerminalService.kt       # Terminal lifecycle + send text
-│   └── PiStatusWidget.kt          # Status bar running count
-└── settings/
-    ├── PiSettings.kt              # Persistent config
-    ├── PiSettingsConfigurable.kt  # Settings UI panel
-    └── PiModelLoader.kt           # Load models from models.json
-```
+## Design notes
 
-## License
+Architecture and decision records live in [`docs/tasks/`](docs/tasks/). Notably:
 
-MIT
+- Conversation model: stable `id` (tab key / primary key) + rebindable `piSessionId` — `/new` swaps the pi session, the tab identity stays.
+- Pi's jsonl files are the source of truth; the plugin only stores an index.
+- Known limitation: Windows assumes PowerShell (the JetBrains default shell); POSIX shells use `env VAR=.. pi` prefix (bash/zsh/fish).
+
+## Acknowledgements
+
+Part of the inspiration for this project came from [pi-agent-launcher](https://github.com/haokanjiang/pi-agent-launcher). Thanks!

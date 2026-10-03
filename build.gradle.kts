@@ -4,8 +4,8 @@ plugins {
     id("org.jetbrains.intellij.platform") version "2.19.0"
 }
 
-group = "com.piagent.launcher"
-version = "0.2.4"
+group = "com.piterminal.bridge"
+version = "0.3.1"
 
 repositories {
     mavenCentral()

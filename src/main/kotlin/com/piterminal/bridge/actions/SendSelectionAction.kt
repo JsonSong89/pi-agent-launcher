@@ -1,11 +1,11 @@
-package com.piagent.launcher.actions
+package com.piterminal.bridge.actions
 
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.DumbAware
-import com.piagent.launcher.conversations.PiConversationService
+import com.piterminal.bridge.conversations.PiConversationService
 
 /**
  * Send selected code to the active conversation input as a file reference.

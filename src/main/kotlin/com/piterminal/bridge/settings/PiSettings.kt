@@ -1,4 +1,4 @@
-package com.piagent.launcher.settings
+package com.piterminal.bridge.settings
 
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
@@ -17,8 +17,8 @@ import javax.swing.text.StyleContext
  */
 @Service(Service.Level.APP)
 @State(
-    name = "PiAgentLauncherSettings",
-    storages = [Storage("PiAgentLauncherSettings.xml")]
+    name = "PiTerminalBridgeSettings",
+    storages = [Storage("PiTerminalBridgeSettings.xml")]
 )
 class PiSettings : PersistentStateComponent<PiSettings.State> {
 

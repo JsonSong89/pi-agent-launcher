@@ -1,10 +1,10 @@
-package com.piagent.launcher.actions
+package com.piterminal.bridge.actions
 
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.DumbAware
-import com.piagent.launcher.conversations.PiConversationService
+import com.piterminal.bridge.conversations.PiConversationService
 
 /**
  * Toolbar button: open the conversation window and start a new Pi session.

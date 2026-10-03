@@ -1,12 +1,12 @@
 <idea-plugin>
-    <id>com.piagent.launcher-jetbrains-plugin</id>
-    <name>Pi Agent Launcher</name>
-    <vendor email="7s.ovors@gmail.com" url="https://plugins.jetbrains.com/plugin/31737-pi-agent-launcher">haokanjiang</vendor>
+    <id>com.piterminal.bridge</id>
+    <name>Pi Terminal Bridge</name>
+    <vendor email="7s.ovors@gmail.com" url="https://github.com/JsonSong89/pi-jetbrains-terminal-bridge">JsonSong89</vendor>
 
     <description><![CDATA[
-    <h2>Pi Agent Launcher</h2>
+    <h2>Pi Terminal Bridge</h2>
     <p>
-        One-click Pi coding agent launcher for JetBrains IDEs — keeps the <a href="https://pi.dev">Pi coding agent</a> CLI one click away inside the IDE.
+        Persistent <a href="https://pi.dev">Pi coding agent</a> sessions for JetBrains IDEs — launch, track and resume conversations, with a live bridge between the IDE and the pi CLI terminal.
     </p>
 
     <blockquote>
@@ -16,9 +16,11 @@
 
     <h3>Features</h3>
     <ul>
-        <li><b>One-click launch</b> from the toolbar</li>
-        <li><b>Integrated terminal</b> that opens a dedicated "Pi" tab inside the Terminal tool window</li>
+        <li><b>Persistent conversations</b> — sessions survive IDE restarts; click to relaunch and resume</li>
+        <li><b>Live bridge</b> — working/idle badges, current model, and session switches (<code>/new</code>, <code>/fork</code>) reflected in the IDE panel in real time; old sessions archived and resumable</li>
+        <li><b>One-click launch</b> from the toolbar in a dedicated Terminal tab</li>
         <li><b>Send to Pi</b> — select code, right-click, and send file reference (<code>@path/file.go#L10-25</code>) to Pi's input</li>
+        <li><b>Notifications</b> — optional balloon when the agent finishes; optionally open files Pi edited</li>
         <li><b>Flexible configuration</b> for models, thinking levels, and launch options</li>
     </ul>
 
@@ -26,67 +28,59 @@
     <h4>Quick Start</h4>
     <ol>
         <li>Click the <b>pi</b> button in the main toolbar.</li>
-        <li>A new "Pi" tab opens in the Terminal window and runs <code>pi</code> automatically.</li>
+        <li>A new Pi tab opens in the Terminal window and runs <code>pi</code> automatically.</li>
         <li>Select code, right-click, then <b>Send to Pi</b> to add file context to your prompt.</li>
+        <li>Close and reopen the IDE — conversations are listed in the Pi panel and resume on click.</li>
     </ol>
 
     <h4>Configuration</h4>
-    <p>Open <b>Settings, Tools, Pi Agent</b> to pick the model, thinking level, and launch options.</p>
+    <p>Open <b>Settings, Tools, Pi Agent</b> to pick the model, thinking level, launch options, and bridge features.</p>
 
     <h3>Keyboard Shortcuts</h3>
     <ul>
-        <li><code>Cmd+Esc</code> (Mac) / <code>Ctrl+Esc</code> (Win/Linux) — Launch or focus Pi</li>
-        <li><code>Cmd+Shift+P</code> (Mac) / <code>Ctrl+Shift+P</code> (Win/Linux) — Send selection to Pi</li>
+        <li><code>Ctrl+Shift+`</code> — Open the Pi conversation window</li>
+        <li><code>Ctrl+Shift+L</code> — Send selection / file to Pi</li>
     </ul>
 
     <h3>Supported IDEs</h3>
     <p>Works with all JetBrains IDEs: IntelliJ IDEA, GoLand, PyCharm, WebStorm, PhpStorm, CLion, Rider, RubyMine, and more.</p>
-    ]]></description>
+        ]]></description>
 
     <change-notes><![CDATA[
-    <h3>0.1.1</h3>
+    <h3>0.3.1</h3>
     <ul>
-        <li>Pi now opens as a tab inside the Terminal tool window (alongside Local)</li>
-        <li>Removed standalone Pi Agent tool window</li>
-        <li>Reflection-based terminal API for zero deprecated warnings</li>
+        <li>New identity: renamed to <b>Pi Terminal Bridge</b> (<code>com.piterminal.bridge</code>); fresh start, earlier 0.x releases belong to the original pi-agent-launcher project</li>
+        <li>Persistent conversations: sessions survive IDE restarts, click to relaunch and resume</li>
+        <li>Live IDEA-pi bridge: working/idle badges, model display, session rebind on <code>/new</code>/<code>/fork</code> with old session archived</li>
+        <li>Settings: agent-finish notifications and auto-open modified files (both opt-in)</li>
     </ul>
-    <h3>0.1.0</h3>
-    <ul>
-        <li>Initial release</li>
-        <li>One-click launch from toolbar</li>
-        <li>Send selection as file reference (@path#Lstart-end)</li>
-        <li>Auto-open files modified by Pi</li>
-        <li>Completion notifications</li>
-        <li>Settings panel: model selection, thinking level, custom args</li>
-        <li>Models loaded from ~/.pi/agent/models.json</li>
-    </ul>
-    ]]></change-notes>
+        ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.terminal</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <projectService serviceImplementation="com.piagent.launcher.services.PiTerminalService"/>
-        <projectService serviceImplementation="com.piagent.launcher.conversations.PiConversationService"/>
-        <projectService serviceImplementation="com.piagent.launcher.conversations.PiConversationStore"/>
-        <projectService serviceImplementation="com.piagent.launcher.bridge.PiBridgeServer"/>
+        <projectService serviceImplementation="com.piterminal.bridge.services.PiTerminalService"/>
+        <projectService serviceImplementation="com.piterminal.bridge.conversations.PiConversationService"/>
+        <projectService serviceImplementation="com.piterminal.bridge.conversations.PiConversationStore"/>
+        <projectService serviceImplementation="com.piterminal.bridge.bridge.PiBridgeServer"/>
 
         <toolWindow id="Pi Agent"
                     anchor="right"
                     icon="/icons/pi.svg"
-                    factoryClass="com.piagent.launcher.ui.PiConversationToolWindowFactory"/>
+                    factoryClass="com.piterminal.bridge.ui.PiConversationToolWindowFactory"/>
 
-        <applicationService serviceImplementation="com.piagent.launcher.settings.PiSettings"/>
+        <applicationService serviceImplementation="com.piterminal.bridge.settings.PiSettings"/>
 
         <applicationConfigurable
                 parentId="tools"
-                instance="com.piagent.launcher.settings.PiSettingsConfigurable"
-                id="com.piagent.launcher.settings"
+                instance="com.piterminal.bridge.settings.PiSettingsConfigurable"
+                id="com.piterminal.bridge.settings"
                 displayName="Pi Agent"/>
 
         <statusBarWidgetFactory
                 id="PiAgentStatus"
-                implementation="com.piagent.launcher.services.PiStatusWidgetFactory"
+                implementation="com.piterminal.bridge.services.PiStatusWidgetFactory"
                 order="after position"/>
 
         <notificationGroup id="Pi Agent"
@@ -97,7 +91,7 @@
     <actions>
         <!-- Toolbar launch button -->
         <action id="Pi.Launch"
-                class="com.piagent.launcher.actions.LaunchPiAction"
+                class="com.piterminal.bridge.actions.LaunchPiAction"
                 text="Launch Pi"
                 description="Open the conversation window and start a new Pi session"
                 icon="/icons/pi.svg">
@@ -106,7 +100,7 @@
 
         <!-- Quick launch/focus -->
         <action id="Pi.OpenToolWindow"
-                class="com.piagent.launcher.actions.OpenPiAction"
+                class="com.piterminal.bridge.actions.OpenPiAction"
                 text="Open Pi Agent"
                 description="Open the Pi conversation window"
                 icon="/icons/pi.svg">
@@ -115,7 +109,7 @@
 
         <!-- Send selection from editor -->
         <action id="Pi.SendSelection"
-                class="com.piagent.launcher.actions.SendSelectionAction"
+                class="com.piterminal.bridge.actions.SendSelectionAction"
                 text="Send to Pi"
                 description="Send selected code reference to Pi"
                 icon="/icons/pi.svg">
@@ -126,7 +120,7 @@
 
         <!-- Send file(s) from Project View / Editor Tab -->
         <action id="Pi.SendFile"
-                class="com.piagent.launcher.actions.SendFileToPiAction"
+                class="com.piterminal.bridge.actions.SendFileToPiAction"
                 text="Send to Pi"
                 description="Send file reference to Pi"
                 icon="/icons/pi.svg">

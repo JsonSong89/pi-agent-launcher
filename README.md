@@ -79,8 +79,8 @@ power — combine them freely.
 
 Defaults — both rebindable in **Settings → Keymap → "Pi Terminal Bridge"**:
 
-- `Alt+Shift+3` — open the Pi conversation window
-- `Ctrl+Shift+L` — send selection / file to Pi
+- `Ctrl+Shift+P` — open the Pi conversation window
+- `Alt+Shift+3` — send selection / file to Pi
 
 ## Build
 

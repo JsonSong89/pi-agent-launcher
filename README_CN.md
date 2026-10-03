@@ -74,8 +74,8 @@ Pi 标签页是**真实终端里跑着完整的 pi TUI** —— 所有斜杠命�
 
 默认值 —— 均可在 **Settings → Keymap → "Pi Terminal Bridge"** 自行修改：
 
-- `Alt+Shift+3` —— 打开 Pi 会话窗口
-- `Ctrl+Shift+L` —— 发送选中内容 / 文件到 Pi
+- `Ctrl+Shift+P` —— 打开 Pi 会话窗口
+- `Alt+Shift+3` —— 发送选中内容 / 文件到 Pi
 
 ## 构建
 

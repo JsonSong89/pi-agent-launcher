@@ -6,12 +6,12 @@
     <description><![CDATA[
     <h2>Pi Terminal Bridge</h2>
     <p>
-        Persistent <a href="https://pi.dev">Pi coding agent</a> sessions for JetBrains IDEs — launch, track and resume conversations, with a live bridge between the IDE and the pi CLI terminal.
+        Persistent <a href="https://pi.dev">Pi coding agent</a> sessions for JetBrains IDEs — launch, track and resume conversations, with a live bridge between the IDE and the pi terminal. Integrated terminal with the full pi TUI, send code context, model selection, optional auto-open of files modified by Pi.
     </p>
 
     <blockquote>
         <b>Important:</b> Install the Pi CLI separately before using this plugin.<br/>
-        <code>npm i -g @anthropic-ai/pi-coding-agent</code> or visit <a href="https://pi.dev">pi.dev</a>
+        <code>npm i -g @earendil-works/pi-coding-agent</code> or visit <a href="https://pi.dev">pi.dev</a>
     </blockquote>
 
     <h3>Features</h3>
@@ -104,7 +104,7 @@
                 text="Open Pi Agent"
                 description="Open the Pi conversation window"
                 icon="/icons/pi.svg">
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift BACK_QUOTE"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="alt shift 3"/>
         </action>
 
         <!-- Send selection from editor -->

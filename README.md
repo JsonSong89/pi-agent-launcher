@@ -3,7 +3,7 @@
 [JetBrains plugin] Persistent [Pi coding agent](https://pi.dev) sessions for JetBrains IDEs — launch, track and resume conversations, with a live bridge between the IDE and the pi CLI terminal.
 
 > **Prerequisite:** install the Pi CLI separately.
-> `npm i -g @anthropic-ai/pi-coding-agent` or visit [pi.dev](https://pi.dev)
+> `npm i -g @earendil-works/pi-coding-agent` or visit [pi.dev](https://pi.dev)
 
 ## Features
 
@@ -35,6 +35,35 @@ Terminal tab  ──  ~/.pi/agent/extensions/pi-launcher-bridge.ts (lazy-install
 - Protocol: `{v, seq, type, tabKey, token, data}` — one JSON object per line, de-dup per `(tabKey, type)`, unknown types dropped, version mismatches dropped loudly.
 - Everything is best-effort: if the bridge dies, conversations still work via manual resume.
 
+## Usage
+
+### Quick start
+
+1. Click the **pi** button in the main toolbar (or press `Alt+Shift+3`).
+2. A new Pi tab opens in the Terminal window and runs `pi` automatically.
+3. Select code in the editor, right-click → **Send to Pi** — a file reference (`@path/file.go#L10-25`) is appended to Pi's input.
+4. Close and reopen the IDE — conversations are listed in the Pi panel; clicking one relaunches the terminal (the pi TUI respawns) and resumes the session with `pi --session <id>`.
+
+> Terminals are not batch-revived at IDE startup; each conversation is resumed
+> on demand — click it (or Send) and its terminal respawns the pi TUI with the
+> session restored.
+
+### Working with the TUI
+
+The Pi tab is a **real terminal running the full pi TUI** — every slash
+command works exactly as on the command line:
+
+- `/model`, `/resume`, `/fork`, `/new`, `/compact` … all available directly in the terminal
+- Type freely between sends: the plugin **appends** to Pi's input line, never overwrites — anything you typed by hand stays there
+- Typical combos:
+  - `Send to Pi` a couple of file references, finish the sentence yourself, hit Enter
+  - `/fork` an ongoing conversation to explore a branch while the original stays in the panel
+  - `/new` after wrapping up — the previous session is archived in the panel, still resumable later
+
+In short: the IDE panel gives you structure (persistent list, working badges,
+archived sessions, click-to-resume), the TUI gives you pi's full interactive
+power — combine them freely.
+
 ## Configuration
 
 **Settings → Tools → Pi Terminal Bridge**
@@ -48,7 +77,9 @@ Terminal tab  ──  ~/.pi/agent/extensions/pi-launcher-bridge.ts (lazy-install
 
 ## Keyboard shortcuts
 
-- `Ctrl+Shift+\`` — open the Pi conversation window
+Defaults — both rebindable in **Settings → Keymap → "Pi Terminal Bridge"**:
+
+- `Alt+Shift+3` — open the Pi conversation window
 - `Ctrl+Shift+L` — send selection / file to Pi
 
 ## Build

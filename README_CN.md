@@ -3,7 +3,7 @@
 [JetBrains 插件] 为 JetBrains IDE 提供 [Pi coding agent](https://pi.dev) 的持久会话 —— 启动、跟踪与恢复会话，并在 IDE 与 pi CLI 终端之间维持一条实时通道。
 
 > **前置条件：** 需单独安装 Pi CLI。
-> `npm i -g @anthropic-ai/pi-coding-agent` 或访问 [pi.dev](https://pi.dev)
+> `npm i -g @earendil-works/pi-coding-agent` 或访问 [pi.dev](https://pi.dev)
 
 ## 功能
 
@@ -35,6 +35,30 @@ Terminal 标签页 ── ~/.pi/agent/extensions/pi-launcher-bridge.ts（懒安�
 - 协议：`{v, seq, type, tabKey, token, data}` —— 每行一个 JSON 对象，按 `(tabKey, type)` 去重，未知 type 丢弃，版本不匹配显式告警。
 - 全链路尽力而为：桥接失效时会话功能不受影响，退化为手动恢复。
 
+## 使用方式
+
+### 快速上手
+
+1. 点击主工具栏的 **pi** 按钮（或按 `Alt+Shift+3`）。
+2. Terminal 工具窗中打开专属 Pi 标签页，自动运行 `pi`。
+3. 编辑器选中代码，右键 → **发送到 Pi** —— 文件引用（`@path/file.go#L10-25`）追加到 Pi 输入栏。
+4. 关闭并重开 IDE —— 面板中列出全部会话，点击即重新拉起终端（pi TUI 重新启动）并用 `pi --session <id>` 恢复会话。
+
+> IDE 启动时不会批量复活终端，而是按需恢复：点击会话（或 Send）时才拉起对应 terminal，pi TUI 重启并接回原会话。
+
+### 与 TUI 配合使用
+
+Pi 标签页是**真实终端里跑着完整的 pi TUI** —— 所有斜杠命令与命令行完全一致：
+
+- `/model`、`/resume`、`/fork`、`/new`、`/compact` … 都可直接在终端里输入
+- 随时手动输入：插件**追加**内容到 Pi 输入栏，从不覆盖 —— 你手打的半句话原地保留
+- 典型组合：
+  - 先 Send 几条文件引用，自己补完问题再回车
+  - `/fork` 一个进行中的会话去探索分支，原会话仍留在面板
+  - 忙完一段 `/new` —— 旧会话归档在面板里，之后还能恢复
+
+一句话：IDE 面板负责结构（持久列表、运行徽标、归档、点击恢复），TUI 负责 pi 的完整交互能力，两者随意组合。
+
 ## 配置
 
 **Settings → Tools → Pi Terminal Bridge**
@@ -48,7 +72,9 @@ Terminal 标签页 ── ~/.pi/agent/extensions/pi-launcher-bridge.ts（懒安�
 
 ## 快捷键
 
-- `Ctrl+Shift+\`` —— 打开 Pi 会话窗口
+默认值 —— 均可在 **Settings → Keymap → "Pi Terminal Bridge"** 自行修改：
+
+- `Alt+Shift+3` —— 打开 Pi 会话窗口
 - `Ctrl+Shift+L` —— 发送选中内容 / 文件到 Pi
 
 ## 构建
